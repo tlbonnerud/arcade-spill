@@ -1,0 +1,6 @@
+{
+	"id": "ball",
+	"name": "Ball",
+	"pck": "ball.pck",
+	"main_scene": "res://games/ball/main.tscn"
+}

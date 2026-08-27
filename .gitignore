@@ -1,0 +1,20 @@
+# macOS-støy
+.DS_Store
+
+# Godot-cache (genereres automatisk av editoren)
+.import/
+.godot/
+
+# Godot-editoren for Mac (60+ MB, lastes ned lokalt — se README)
+tools/
+
+# Gammelt Godot 4.5-prosjekt, brukes ikke lenger
+launce-pad/
+
+# MERK: dist/ er MED i git med vilje — den inneholder de ferdigbygde
+# .pck-filene, slik at Pi-en kan kjøre spillene rett etter clone uten
+# å måtte bygge noe selv. Kjør ./build.sh på Mac-en før du pusher.
+
+# Tomt repo laget ved et uhell + Godot 4-artefakter
+ArkadeRepo/
+*.uid

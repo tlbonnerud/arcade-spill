@@ -1,0 +1,6 @@
+{
+	"id": "dummy",
+	"name": "Dummy",
+	"pck": "dummy.pck",
+	"main_scene": "res://games/dummy/main.tscn"
+}

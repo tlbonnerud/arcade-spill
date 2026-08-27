@@ -1,0 +1,31 @@
+; Engine configuration file (Godot 3.6)
+; Dummy-spill: brukes bare til å teste launcher/.pck-flyten.
+; Merk: alt innhold ligger i res://games/dummy/ (unikt navnerom) slik at
+; filene ikke kolliderer når .pck-en lastes inn i launcheren.
+
+config_version=4
+
+[application]
+
+config/name="Dummy"
+run/main_scene="res://games/dummy/main.tscn"
+
+[autoload]
+
+Arcade="*res://shared/arcade_api.gd"
+
+[display]
+
+window/size/width=640
+window/size/height=360
+window/size/test_width=1280
+window/size/test_height=720
+window/stretch/mode="2d"
+window/stretch/aspect="keep"
+
+[rendering]
+
+quality/driver/driver_name="GLES2"
+vram_compression/import_etc=true
+vram_compression/import_etc2=false
+environment/default_clear_color=Color( 0.02, 0.02, 0.04, 1 )
