@@ -38,6 +38,10 @@ func _input(event: InputEvent) -> void:
 # ---------------------------------------------------------------------------
 
 func _find_games_dir() -> String:
+	# Eksplisitt overstyring (brukes av pi/run.sh på Raspberry Pi).
+	var env_dir := OS.get_environment("ARCADE_GAMES_DIR")
+	if env_dir != "":
+		return env_dir
 	if OS.has_feature("editor"):
 		# Kjørt fra editor/CLI mot prosjektmappa: bruk dist/games i repoet.
 		return ProjectSettings.globalize_path("res://").plus_file("../dist/games")

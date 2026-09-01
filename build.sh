@@ -14,6 +14,9 @@ fi
 
 mkdir -p "$ROOT/dist/games"
 
+echo "=== Eksporterer launcher ==="
+"$GODOT" --no-window --path "$ROOT/launcher" --export-pack "pck" "$ROOT/dist/launcher.pck" >/dev/null
+
 for game_dir in "$ROOT"/games/*/; do
 	id="$(basename "$game_dir")"
 	echo "=== Eksporterer $id ==="
