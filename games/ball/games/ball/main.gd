@@ -14,7 +14,7 @@ var vel := Vector2(140, 100)
 
 func _ready() -> void:
 	var hint := Label.new()
-	hint.text = "BALL — piltaster dytter ballen, A (Z) avslutter"
+	hint.text = "CREEP — piltaster dytter ballen, SELECT (ESC) går til menyen"
 	hint.align = Label.ALIGN_CENTER
 	hint.rect_position = Vector2(0, 8)
 	hint.rect_size = Vector2(SIZE.x, 20)
@@ -47,8 +47,3 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	draw_circle(pos, RADIUS, Color(0.4, 0.85, 1.0))
 	draw_circle(pos, RADIUS * 0.5, Color(0.9, 0.97, 1.0))
-
-
-func _input(event: InputEvent) -> void:
-	if event.is_action_pressed("p1_a"):
-		Arcade.quit_to_launcher()

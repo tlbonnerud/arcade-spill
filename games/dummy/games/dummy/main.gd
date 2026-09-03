@@ -1,8 +1,8 @@
 extends Control
 
-# Dummy-spill for fase 1-piloten: viser en tekst og går tilbake til
-# launcheren når spilleren trykker A. Beviser at .pck-lasting, felles
-# input og quit_to_launcher() fungerer ende-til-ende.
+# Dummy-spill for fase 1-piloten: viser bare en tekst. Beviser at
+# .pck-lasting, felles input og quit_to_launcher() fungerer ende-til-ende.
+# Tilbake til menyen: SELECT/ESC (globalt i arcade_api.gd).
 
 var elapsed := 0.0
 onready var hint: Label = Label.new()
@@ -23,7 +23,7 @@ func _ready() -> void:
 	title_center.add_child(title)
 	root.add_child(title_center)
 
-	hint.text = "Trykk A (Z på tastatur) for å gå tilbake"
+	hint.text = "Trykk SELECT (ESC på tastatur) for å gå tilbake"
 	hint.align = Label.ALIGN_CENTER
 	var hint_center := CenterContainer.new()
 	hint_center.add_child(hint)
@@ -38,8 +38,3 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	elapsed += delta
 	hint.modulate.a = 0.5 + 0.5 * abs(sin(elapsed * 3.0))
-
-
-func _input(event: InputEvent) -> void:
-	if event.is_action_pressed("p1_a"):
-		Arcade.quit_to_launcher()

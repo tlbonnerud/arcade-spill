@@ -1,6 +1,6 @@
 {
 	"id": "ball",
-	"name": "Ball",
+	"name": "Creep",
 	"pck": "ball.pck",
 	"main_scene": "res://games/ball/main.tscn"
 }

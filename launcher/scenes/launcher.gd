@@ -1,14 +1,39 @@
 extends Control
 
-# Fase 1-pilot: enkel liste over spill funnet i games-mappa.
-# Design og animasjoner kommer i fase 2 — dette skal bare bevise flyten.
+# Launcher-meny i to steg:
+#  1) Startskjerm: ARCADE-logo + blinkende "Press any button to start".
+#  2) Spillvalg: én knapp-sprite per spill, valgt knapp skaleres opp.
+# Grafikken ligger i res://sprites/ (tegnet for 160x90, skaleres 4x opp
+# til 640x360). Spill uten egen knapp-sprite får en tekst-knapp.
 
+const SPRITES := "res://sprites/"
+const SIZE := Vector2(640, 360)
+
+# manifest-id -> knapp-sprite
+const BUTTON_TEXTURES := {
+	"ailien_invaders": "aliens-button.png",
+	"ball": "creep-button.png",
+}
+
+const SCALE_SELECTED := 3.6
+const SCALE_NORMAL := 2.6
+const COLOR_SELECTED := Color(1, 1, 1)
+const COLOR_NORMAL := Color(0.55, 0.55, 0.65)
+const ANIM_SPEED := 10.0
+
+enum State { START, SELECT }
+
+var state: int = State.START
 var games := []
 var games_dir := ""
 var selected := 0
-var rows := []
+var buttons := []  # Node2D per spill, skaleres rundt eget origo
+var elapsed := 0.0
 
-onready var list: VBoxContainer = VBoxContainer.new()
+var start_screen: Node2D
+var select_screen: Node2D
+var press_text: Sprite
+var record_label: Label
 
 
 func _ready() -> void:
@@ -16,23 +41,50 @@ func _ready() -> void:
 	games = _scan_games(games_dir)
 	_build_ui()
 
+	# Rett tilbake til spillvalget når man kommer fra et spill,
+	# og i røyktesten (som starter spillene selv).
+	if Arcade.returned_from_game or Arcade.smoke_test:
+		_show_select()
+	else:
+		_show_start()
+
 	if Arcade.smoke_test:
 		_run_smoke_test()
 
+	# Dev-verktøy: ARCADE_SCREENSHOT=/sti/prefiks lagrer begge skjermene
+	# som PNG og avslutter. Brukes ikke på arkaden.
+	if OS.get_environment("ARCADE_SCREENSHOT") != "":
+		yield(get_tree().create_timer(1.2), "timeout")
+		_save_screenshot(OS.get_environment("ARCADE_SCREENSHOT") + "-start.png")
+		_show_select()
+		yield(get_tree().create_timer(1.2), "timeout")
+		_save_screenshot(OS.get_environment("ARCADE_SCREENSHOT") + "-select.png")
+		get_tree().quit()
+
 
 func _input(event: InputEvent) -> void:
+	if state == State.START:
+		var pressed_button: bool = (event is InputEventKey or event is InputEventJoypadButton) \
+				and event.pressed and not event.is_echo()
+		if pressed_button:
+			if event.is_action("arcade_back") and OS.is_debug_build():
+				# Kun for utvikling på Mac — på Pi-en starter systemd
+				# launcheren på nytt, så der skal denne aldri trigges.
+				get_tree().quit()
+			else:
+				_show_select()
+		return
+
 	if games.empty():
 		return
-	if event.is_action_pressed("p1_down"):
+	if event.is_action_pressed("p1_right") or event.is_action_pressed("p1_down"):
 		_select(selected + 1)
-	elif event.is_action_pressed("p1_up"):
+	elif event.is_action_pressed("p1_left") or event.is_action_pressed("p1_up"):
 		_select(selected - 1)
 	elif event.is_action_pressed("p1_a") or event.is_action_pressed("arcade_start"):
 		_launch(selected)
-	elif event.is_action_pressed("arcade_back") and OS.is_debug_build():
-		# Kun for utvikling på Mac — på Pi-en starter systemd launcheren på nytt,
-		# så der skal denne aldri trigges.
-		get_tree().quit()
+	elif event.is_action_pressed("arcade_back"):
+		_show_start()
 
 
 # ---------------------------------------------------------------------------
@@ -90,57 +142,128 @@ static func _by_name(a, b) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# UI
+# ---------------------------------------------------------------------------
 
 func _build_ui() -> void:
-	var title := Label.new()
-	title.text = "ARCADE"
-	title.align = Label.ALIGN_CENTER
-	title.rect_scale = Vector2(2, 2)
+	start_screen = Node2D.new()
+	add_child(start_screen)
 
-	list.alignment = BoxContainer.ALIGN_CENTER
-	list.set("custom_constants/separation", 8)
+	var logo_big := Sprite.new()
+	logo_big.texture = load(SPRITES + "ARCADE-text.png")
+	logo_big.scale = Vector2(4, 4)
+	logo_big.position = Vector2(SIZE.x / 2, 140)
+	start_screen.add_child(logo_big)
 
-	var root := VBoxContainer.new()
-	root.set_anchors_preset(Control.PRESET_WIDE)
-	root.alignment = BoxContainer.ALIGN_CENTER
-	root.set("custom_constants/separation", 24)
-	add_child(root)
+	press_text = Sprite.new()
+	press_text.texture = load(SPRITES + "Press_any_button_to_start.png")
+	press_text.hframes = 2
+	press_text.scale = Vector2(2, 2)
+	press_text.position = Vector2(SIZE.x / 2, 240)
+	start_screen.add_child(press_text)
 
-	var title_center := CenterContainer.new()
-	title_center.add_child(title)
-	root.add_child(title_center)
+	select_screen = Node2D.new()
+	add_child(select_screen)
 
-	var list_center := CenterContainer.new()
-	list_center.add_child(list)
-	root.add_child(list_center)
+	var logo_small := Sprite.new()
+	logo_small.texture = load(SPRITES + "ARCADE-text.png")
+	logo_small.scale = Vector2(2, 2)
+	logo_small.position = Vector2(SIZE.x / 2, 64)
+	select_screen.add_child(logo_small)
 
+	_build_game_buttons()
+
+	record_label = Label.new()
+	record_label.rect_position = Vector2(0, 268)
+	record_label.rect_size = Vector2(SIZE.x, 20)
+	record_label.align = Label.ALIGN_CENTER
+	record_label.modulate = Color(1.0, 0.85, 0.25)
+	select_screen.add_child(record_label)
+
+	# Rammen ligger øverst og er felles for begge skjermene.
+	var border := Sprite.new()
+	border.texture = load(SPRITES + "Border.png")
+	border.centered = false
+	border.scale = SIZE / Vector2(160, 90)
+	add_child(border)
+
+
+func _build_game_buttons() -> void:
 	if games.empty():
 		var empty := Label.new()
 		empty.text = "Ingen spill funnet i:\n" + games_dir
 		empty.align = Label.ALIGN_CENTER
-		list.add_child(empty)
+		empty.rect_position = Vector2(0, 160)
+		empty.rect_size = Vector2(SIZE.x, 60)
+		select_screen.add_child(empty)
 		return
 
-	for game in games:
-		var row := Label.new()
-		var best: int = Arcade.get_best_score(game["id"])
-		row.text = game["name"] + ("   (rekord: %d)" % best if best > 0 else "")
-		row.align = Label.ALIGN_CENTER
-		list.add_child(row)
-		rows.append(row)
+	var n := games.size()
+	var spacing := 190.0
+	var start_x := SIZE.x / 2 - (n - 1) * spacing / 2
+	for i in n:
+		var holder := Node2D.new()
+		holder.position = Vector2(start_x + i * spacing, 180)
+		select_screen.add_child(holder)
+		buttons.append(holder)
 
-	_select(0)
+		var game: Dictionary = games[i]
+		if BUTTON_TEXTURES.has(game["id"]):
+			var s := Sprite.new()
+			s.texture = load(SPRITES + BUTTON_TEXTURES[game["id"]])
+			holder.add_child(s)
+		else:
+			# Ingen egen sprite — enkel tekst-knapp i samme stil.
+			var l := Label.new()
+			l.text = game["name"].to_upper()
+			l.align = Label.ALIGN_CENTER
+			l.valign = Label.VALIGN_CENTER
+			l.rect_position = Vector2(-28, -16)
+			l.rect_size = Vector2(56, 32)
+			l.rect_scale = Vector2(0.5, 0.5)
+			l.rect_pivot_offset = Vector2(28, 16)
+			holder.add_child(l)
+
+
+func _show_start() -> void:
+	state = State.START
+	start_screen.visible = true
+	select_screen.visible = false
+
+
+func _show_select() -> void:
+	state = State.SELECT
+	start_screen.visible = false
+	select_screen.visible = true
+	_select(selected)
 
 
 func _select(index: int) -> void:
 	selected = int(clamp(index, 0, games.size() - 1))
-	for i in rows.size():
+	if games.empty():
+		return
+	var best: int = Arcade.get_best_score(games[selected]["id"])
+	record_label.text = "rekord: %d" % best if best > 0 else ""
+
+
+func _process(delta: float) -> void:
+	elapsed += delta
+
+	if state == State.START:
+		press_text.frame = int(elapsed * 2.0) % 2
+		return
+
+	for i in buttons.size():
+		var target_scale := SCALE_NORMAL
+		var target_color := COLOR_NORMAL
 		if i == selected:
-			rows[i].modulate = Color(1, 0.9, 0.3)
-			rows[i].text = "> " + games[i]["name"] + " <"
-		else:
-			rows[i].modulate = Color(0.7, 0.7, 0.8)
-			rows[i].text = games[i]["name"]
+			target_scale = SCALE_SELECTED + 0.08 * sin(elapsed * 5.0)
+			target_color = COLOR_SELECTED
+		var t: float = clamp(delta * ANIM_SPEED, 0.0, 1.0)
+		var holder: Node2D = buttons[i]
+		var s: float = lerp(holder.scale.x, target_scale, t)
+		holder.scale = Vector2(s, s)
+		holder.modulate = holder.modulate.linear_interpolate(target_color, t)
 
 
 func _launch(index: int) -> void:
@@ -162,7 +285,15 @@ func _show_error(msg: String) -> void:
 	err.text = msg
 	err.modulate = Color(1, 0.4, 0.4)
 	err.align = Label.ALIGN_CENTER
-	list.add_child(err)
+	err.rect_position = Vector2(0, 310)
+	err.rect_size = Vector2(SIZE.x, 20)
+	add_child(err)
+
+
+func _save_screenshot(path: String) -> void:
+	var img := get_viewport().get_texture().get_data()
+	img.flip_y()
+	img.save_png(path)
 
 
 # ---------------------------------------------------------------------------

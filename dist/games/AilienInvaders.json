@@ -1,0 +1,6 @@
+{
+	"id": "ailien_invaders",
+	"name": "Ailien",
+	"pck": "AilienInvaders.pck",
+	"main_scene": "res://games/ailien_invaders/main.tscn"
+}
