@@ -35,8 +35,21 @@ var select_screen: Node2D
 var press_text: Sprite
 var record_label: Label
 
+# Input-testmodus (ARCADE_INPUT_DEBUG=1): viser rå knapp-/akse-hendelser
+# på skjermen og i terminalen, så vi kan finne ut hvilke indekser
+# USB-encoderen faktisk sender.
+var input_debug := false
+var debug_log: Label
+var debug_joy: Label
+var debug_lines := []
+
 
 func _ready() -> void:
+	input_debug = OS.get_environment("ARCADE_INPUT_DEBUG") != ""
+	if input_debug:
+		_build_debug_ui()
+		return
+
 	games_dir = _find_games_dir()
 	games = _scan_games(games_dir)
 	_build_ui()
@@ -63,6 +76,10 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if input_debug:
+		_debug_input(event)
+		return
+
 	if state == State.START:
 		var pressed_button: bool = (event is InputEventKey or event is InputEventJoypadButton) \
 				and event.pressed and not event.is_echo()
@@ -247,6 +264,10 @@ func _select(index: int) -> void:
 
 
 func _process(delta: float) -> void:
+	if input_debug:
+		debug_joy.text = _debug_joy_info()
+		return
+
 	elapsed += delta
 
 	if state == State.START:
@@ -294,6 +315,67 @@ func _save_screenshot(path: String) -> void:
 	var img := get_viewport().get_texture().get_data()
 	img.flip_y()
 	img.save_png(path)
+
+
+# ---------------------------------------------------------------------------
+# Input-testmodus
+# ---------------------------------------------------------------------------
+
+func _build_debug_ui() -> void:
+	var title := Label.new()
+	title.text = "INPUT-TEST — trykk på hver knapp/spak. Ctrl+C i terminalen avslutter."
+	title.rect_position = Vector2(8, 6)
+	title.modulate = Color(1.0, 0.85, 0.25)
+	add_child(title)
+
+	debug_joy = Label.new()
+	debug_joy.rect_position = Vector2(8, 26)
+	debug_joy.modulate = Color(0.45, 0.85, 1.0)
+	add_child(debug_joy)
+
+	debug_log = Label.new()
+	debug_log.rect_position = Vector2(8, 64)
+	debug_log.rect_size = Vector2(SIZE.x - 16, SIZE.y - 72)
+	add_child(debug_log)
+
+	print("INPUT-TEST aktiv. " + _debug_joy_info())
+
+
+func _debug_joy_info() -> String:
+	var pads := Input.get_connected_joypads()
+	if pads.empty():
+		return "Ingen joypad funnet — sjekk at USB-encoderen er koblet til."
+	var lines := []
+	for d in pads:
+		lines.append("Joypad %d: %s  [guid %s]" % [d, Input.get_joy_name(d), Input.get_joy_guid(d)])
+	return PoolStringArray(lines).join("\n")
+
+
+func _debug_input(event: InputEvent) -> void:
+	var line := ""
+	if event is InputEventJoypadButton and event.pressed:
+		line = "KNAPP %d  (enhet %d)%s" % [event.button_index, event.device, _debug_actions(event)]
+	elif event is InputEventJoypadMotion and abs(event.axis_value) > 0.5:
+		line = "AKSE %d = %+.1f  (enhet %d)%s" % [event.axis, event.axis_value, event.device, _debug_actions(event)]
+	elif event is InputEventKey and event.pressed and not event.is_echo():
+		line = "TAST %s  (scancode %d)%s" % [OS.get_scancode_string(event.scancode), event.scancode, _debug_actions(event)]
+	if line == "":
+		return
+	print(line)
+	debug_lines.append(line)
+	if debug_lines.size() > 18:
+		debug_lines.pop_front()
+	debug_log.text = PoolStringArray(debug_lines).join("\n")
+
+
+func _debug_actions(event: InputEvent) -> String:
+	var hits := []
+	for a in ["p1_up", "p1_down", "p1_left", "p1_right", "p1_a", "p1_b", "arcade_start", "arcade_back"]:
+		if event.is_action(a):
+			hits.append(a)
+	if hits.empty():
+		return "   ->  (ikke bundet)"
+	return "   ->  " + PoolStringArray(hits).join(", ")
 
 
 # ---------------------------------------------------------------------------
