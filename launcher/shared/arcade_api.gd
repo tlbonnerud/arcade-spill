@@ -109,8 +109,11 @@ func _register_inputs() -> void:
 	_action("p1_right", [_key(KEY_RIGHT),  _btn(JOY_DPAD_RIGHT), _axis(JOY_AXIS_0,  1.0)])
 	_action("p1_a",     [_key(KEY_Z),      _btn(JOY_BUTTON_0)])
 	_action("p1_b",     [_key(KEY_X),      _btn(JOY_BUTTON_1)])
-	_action("arcade_start", [_key(KEY_ENTER),  _btn(JOY_START)])
-	_action("arcade_back",  [_key(KEY_ESCAPE), _btn(JOY_SELECT)])
+	# DragonRise-encoderen på arkaden har ingen standard-mapping:
+	# START-knappen er indeks 3 og RESET (= tilbake/exit) er indeks 2.
+	# JOY_START/JOY_SELECT beholdes for vanlige gamepads under utvikling.
+	_action("arcade_start", [_key(KEY_ENTER),  _btn(JOY_START),  _btn(JOY_BUTTON_3)])
+	_action("arcade_back",  [_key(KEY_ESCAPE), _btn(JOY_SELECT), _btn(JOY_BUTTON_2)])
 
 
 func _action(action_name: String, events: Array) -> void:
