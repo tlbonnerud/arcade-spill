@@ -1,7 +1,8 @@
 # Arcade spill
 
 Arkademaskin på Raspberry Pi 3B+ uten desktop: en Godot-launchpad er eneste GUI
-og laster spillene som `.pck`-filer. Se [PLAN.md](PLAN.md) for hele planen.
+og laster spillene som `.pck`-filer. Se [PLAN.md](PLAN.md) for hele planen og
+[ARCADE_API.md](ARCADE_API.md) for input-mapping og API-et spillene bruker.
 
 **Godot-versjon: 3.6 LTS (GLES2)** — Pi 3B+ støtter ikke Godot 4.
 Editoren ligger i `tools/Godot3.app`.
