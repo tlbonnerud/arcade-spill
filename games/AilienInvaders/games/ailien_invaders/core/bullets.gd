@@ -31,7 +31,8 @@ const KINDS := {
 var area_size := Vector2(640, 360)
 var player_bullet := {}  # {pos, kind, age}
 var player_bullet_active := false
-var enemy_bullets := []  # [{pos, kind, age}]
+var enemy_bullets := []  # [{pos, kind, age, vel}]
+var enemy_speed_mult := 1.0  # settes av main fra bølgedataene
 
 var _player: Node = null
 var _swarm: Node = null
@@ -62,8 +63,11 @@ func spawn_player_bullet(pos: Vector2) -> bool:
 	return true
 
 
-func spawn_enemy_bullet(pos: Vector2, kind: String = "red") -> void:
-	enemy_bullets.append(_make_bullet(pos, kind))
+# dir er en enhetsvektor; rett ned som standard, mot spilleren for siktede skudd.
+func spawn_enemy_bullet(pos: Vector2, kind: String = "red", dir: Vector2 = Vector2.DOWN) -> void:
+	var b := _make_bullet(pos, kind)
+	b["vel"] = dir * ENEMY_BULLET_SPEED * enemy_speed_mult
+	enemy_bullets.append(b)
 
 
 func enemy_bullet_count() -> int:
@@ -81,9 +85,9 @@ func step(delta: float) -> void:
 
 	var remaining := []
 	for b in enemy_bullets:
-		b["pos"].y += ENEMY_BULLET_SPEED * delta
+		b["pos"] += b["vel"] * delta
 		b["age"] += delta
-		if b["pos"].y > area_size.y + OFFSCREEN_MARGIN:
+		if _offscreen(b["pos"]):
 			continue
 		if _player.hit_test(b["pos"]):
 			_player.take_hit()
@@ -91,6 +95,11 @@ func step(delta: float) -> void:
 		remaining.append(b)
 	enemy_bullets = remaining
 	update()
+
+
+func _offscreen(p: Vector2) -> bool:
+	return p.y > area_size.y + OFFSCREEN_MARGIN or p.y < -OFFSCREEN_MARGIN \
+			or p.x < -OFFSCREEN_MARGIN or p.x > area_size.x + OFFSCREEN_MARGIN
 
 
 func _make_bullet(pos: Vector2, kind: String) -> Dictionary:

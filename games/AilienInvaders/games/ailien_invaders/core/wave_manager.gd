@@ -1,0 +1,379 @@
+extends Node2D
+
+# Bølgemotoren. Leser én rad fra waves/waves.gd, bygger fiendene, kjører
+# innflygingen, flytter formasjonen etter valgt mønster, lar eliter dykke,
+# velger hvem som skyter og håndterer treff. Sier fra via signaler.
+#
+# Erstatter den gamle swarm.gd. Samme grensesnitt mot main og bullets:
+# spawn / animate / step / try_hit / alive_count, pluss entry_finished og
+# diver_positions() for kontakt mellom dykkere og spiller.
+#
+# Fiendene lever i lista `enemies` som dictionaries; sprite-posisjoner er
+# absolutte skjermkoordinater (noden selv står i origo).
+
+signal enemy_killed(points)
+signal cleared                    # alle fiender i bølgen er døde
+signal reached_bottom             # formasjonen nådde spillerens høyde
+signal entry_finished             # alle gjenlevende er på plass, bølgen kan begynne
+signal fire_requested(pos, kind, dir)  # en fiende vil skyte; dir er enhetsvektor
+
+const EnemyTypes := preload("res://games/ailien_invaders/enemies/enemy_types.gd")
+const Formations := preload("res://games/ailien_invaders/enemies/formations.gd")
+const Entries := preload("res://games/ailien_invaders/enemies/entry_patterns.gd")
+const Movements := preload("res://games/ailien_invaders/enemies/movement_patterns.gd")
+const Waves := preload("res://games/ailien_invaders/waves/waves.gd")
+
+const BOTTOM_LIMIT := 304.0
+const ANIM_INTERVAL := 0.35
+const HIT_HALF_SIZE := Vector2(14, 12)
+const MUZZLE_OFFSET := Vector2(0, 12)
+const FLASH_TIME := 0.08
+const FLASH_COLOR := Color(1.0, 0.35, 0.35)
+const DIVE_DOWN_TIME := 1.0
+const DIVE_UP_TIME := 1.3
+const DIVE_TARGET_Y := 320.0   # like over spillerens høyde
+const MIN_DOWNWARD := 0.35     # siktede kuler går aldri rett sidelengs
+
+var area_size := Vector2(640, 360)
+var wave := 1
+var wave_data := {}
+var enemies := []            # se _make_enemy
+var total := 0
+var offset := Vector2.ZERO   # formasjonens forskyvning fra plassene
+var move_state := {}
+var entering := false
+var anim_timer := 0.0
+var fire_timer := 1.5
+var dive_timer := 0.0
+var diver = null             # dictionary fra enemies, eller null
+var player_pos := Vector2(320, 330)
+var rng := RandomNumberGenerator.new()
+
+
+func setup(size: Vector2) -> void:
+	area_size = size
+	rng.randomize()
+
+
+# Bygger bølge wave_number. rng gir reproduserbare valg fra poolene.
+func spawn(wave_number: int, run_rng: RandomNumberGenerator = null) -> void:
+	wave = wave_number
+	if run_rng != null:
+		rng = run_rng
+	wave_data = Waves.get_wave(wave)
+
+	for child in get_children():
+		remove_child(child)
+		child.queue_free()
+	enemies.clear()
+	diver = null
+	offset = Vector2.ZERO
+	entering = true
+	fire_timer = 1.5
+	dive_timer = wave_data["dive_interval"]
+
+	var type_ids := []
+	for pair in wave_data["enemies"]:
+		for _i in int(pair[1]):
+			type_ids.append(pair[0])
+	total = type_ids.size()
+
+	# Trekk fra poolene. Valgene lagres så tester og feilsøking kan se dem.
+	wave_data["chosen"] = {
+		"formation": _pick(wave_data["formations"]),
+		"entry": _pick(wave_data["entries"]),
+		"movement": _pick(wave_data["movements"]),
+	}
+	var slots: Array = Formations.build(wave_data["chosen"]["formation"], total, area_size)
+	var entries: Array = Entries.build(wave_data["chosen"]["entry"], slots, area_size, rng)
+	move_state = Movements.start(wave_data["chosen"]["movement"], area_size,
+			Formations.half_width(slots, area_size))
+
+	for i in total:
+		enemies.append(_make_enemy(type_ids[i], slots[i], entries[i]))
+
+
+func _pick(pool: Array):
+	return pool[rng.randi() % pool.size()]
+
+
+func _make_enemy(type_id: String, slot: Vector2, entry: Dictionary) -> Dictionary:
+	var type: Dictionary = EnemyTypes.get_type(type_id)
+	var s := Sprite.new()
+	s.texture = type["texture"]
+	s.hframes = EnemyTypes.frame_count(type)
+	s.frame = rng.randi() % s.hframes
+	s.position = entry["start"]
+	add_child(s)
+	return {
+		"sprite": s,
+		"type": type_id,
+		"hp": int(max(1, round(type["hp"] * wave_data["hp_mult"]))),
+		"points": type["points"],
+		"bullet": type["bullet"],
+		"aimed": type["aimed"],
+		"can_dive": type["can_dive"],
+		"fire_weight": type["fire_weight"],
+		"alive": true,
+		"slot": slot,
+		"entry": entry,
+		"entry_t": 0.0,
+		"entered": false,
+		"diving": false,
+		"dive": {},
+		"flash": 0.0,
+	}
+
+
+# ---------------------------------------------------------------------------
+# Spørringer
+# ---------------------------------------------------------------------------
+
+func alive_count() -> int:
+	var n := 0
+	for e in enemies:
+		if e["alive"]:
+			n += 1
+	return n
+
+
+func is_entering() -> bool:
+	return entering
+
+
+# Posisjonene til fiender som dykker, for kontaktsjekk mot spilleren.
+func diver_positions() -> Array:
+	if diver != null and diver["alive"]:
+		return [diver["sprite"].position]
+	return []
+
+
+func enemy_positions() -> Array:
+	var out := []
+	for e in enemies:
+		if e["alive"]:
+			out.append(e["sprite"].position)
+	return out
+
+
+# ---------------------------------------------------------------------------
+# Per frame
+# ---------------------------------------------------------------------------
+
+# Sprite-animasjon og treff-blink. Kjører også under game over.
+func animate(delta: float) -> void:
+	anim_timer += delta
+	var advance := anim_timer >= ANIM_INTERVAL
+	if advance:
+		anim_timer = 0.0
+	for e in enemies:
+		if not e["alive"]:
+			continue
+		var s: Sprite = e["sprite"]
+		if advance:
+			s.frame = (s.frame + 1) % s.hframes
+		if e["flash"] > 0.0:
+			e["flash"] -= delta
+			if e["flash"] <= 0.0:
+				s.modulate = Color.white
+
+
+# Bevegelse, dykk og skyting. fire_allowed settes av main (tak på kuler).
+func step(delta: float, fire_allowed: bool, player_position: Vector2) -> void:
+	player_pos = player_position
+	if entering:
+		_step_entry(delta)
+		return
+	_step_movement(delta)
+	_step_dive(delta)
+	_fire(delta, fire_allowed)
+	_check_bottom()
+
+
+func _step_entry(delta: float) -> void:
+	var all_in := true
+	for e in enemies:
+		if not e["alive"] or e["entered"]:
+			continue
+		var entry: Dictionary = e["entry"]
+		e["entry_t"] += delta
+		var u: float = (e["entry_t"] - entry["delay"]) / entry["duration"]
+		if u <= 0.0:
+			e["sprite"].position = entry["start"]
+			all_in = false
+		elif u >= 1.0:
+			e["sprite"].position = e["slot"]
+			e["entered"] = true
+		else:
+			e["sprite"].position = Entries.point(entry, e["slot"], u)
+			all_in = false
+	if all_in:
+		entering = false
+		emit_signal("entry_finished")
+
+
+func _step_movement(delta: float) -> void:
+	var min_x := area_size.x
+	var max_x := 0.0
+	for e in enemies:
+		if e["alive"] and not e["diving"]:
+			min_x = min(min_x, e["slot"].x)
+			max_x = max(max_x, e["slot"].x)
+	var ctx := {
+		"dead_frac": 1.0 - float(alive_count()) / max(1, total),
+		"speed_mult": wave_data["speed_mult"],
+		"min_x": min_x,
+		"max_x": max_x,
+	}
+	offset = Movements.step(move_state, delta, ctx)
+	for e in enemies:
+		if e["alive"] and not e["diving"]:
+			e["sprite"].position = e["slot"] + offset
+
+
+func _check_bottom() -> void:
+	for e in enemies:
+		if e["alive"] and not e["diving"] and e["sprite"].position.y >= BOTTOM_LIMIT:
+			emit_signal("reached_bottom")
+			return
+
+
+# ---------------------------------------------------------------------------
+# Dykk: én fiende om gangen forlater plassen, stuper mot spilleren i en bue,
+# skyter i bunnen og flyr tilbake til plassen sin (som kan ha flyttet seg).
+# ---------------------------------------------------------------------------
+
+func _step_dive(delta: float) -> void:
+	if diver == null:
+		if not wave_data["dives"]:
+			return
+		dive_timer -= delta
+		if dive_timer <= 0.0:
+			_start_dive()
+		return
+
+	if not diver["alive"]:
+		diver = null
+		dive_timer = wave_data["dive_interval"]
+		return
+
+	var d: Dictionary = diver["dive"]
+	var s: Sprite = diver["sprite"]
+	if d["phase"] == 0:
+		d["t"] += delta / DIVE_DOWN_TIME
+		s.position = _bezier(d["p0"], d["ctrl"], d["target"], min(d["t"], 1.0))
+		if d["t"] >= 1.0:
+			_fire_from(diver)
+			d["phase"] = 1
+			d["t"] = 0.0
+			d["p0"] = d["target"]
+			d["ctrl"] = Vector2(d["target"].x - d["side"] * 160.0, (d["target"].y + diver["slot"].y) / 2)
+	else:
+		d["t"] += delta / DIVE_UP_TIME
+		var home: Vector2 = diver["slot"] + offset
+		s.position = _bezier(d["p0"], d["ctrl"], home, min(d["t"], 1.0))
+		if d["t"] >= 1.0:
+			diver["diving"] = false
+			diver = null
+			dive_timer = wave_data["dive_interval"]
+
+
+func _start_dive() -> void:
+	var candidates := []
+	for e in enemies:
+		if e["alive"] and e["can_dive"] and not e["diving"]:
+			candidates.append(e)
+	if candidates.empty():
+		dive_timer = wave_data["dive_interval"]
+		return
+	var e: Dictionary = candidates[rng.randi() % candidates.size()]
+	var p0: Vector2 = e["sprite"].position
+	var side := 1.0 if p0.x < area_size.x / 2 else -1.0
+	var target := Vector2(clamp(player_pos.x + rng.randf_range(-30.0, 30.0), 30.0, area_size.x - 30.0), DIVE_TARGET_Y)
+	e["diving"] = true
+	e["dive"] = {
+		"phase": 0,
+		"t": 0.0,
+		"side": side,
+		"p0": p0,
+		"ctrl": Vector2(p0.x + side * 160.0, (p0.y + target.y) / 2),
+		"target": target,
+	}
+	diver = e
+
+
+static func _bezier(p0: Vector2, ctrl: Vector2, p2: Vector2, u: float) -> Vector2:
+	var t := u * u * (3.0 - 2.0 * u)
+	var it := 1.0 - t
+	return it * it * p0 + 2.0 * it * t * ctrl + t * t * p2
+
+
+# ---------------------------------------------------------------------------
+# Skyting
+# ---------------------------------------------------------------------------
+
+func _fire(delta: float, allowed: bool) -> void:
+	fire_timer -= delta
+	if fire_timer <= 0.0 and allowed:
+		fire_timer = rng.randf_range(0.6, 1.4) / wave_data["fire_rate_mult"]
+		var e := _pick_shooter()
+		if not e.empty():
+			_fire_from(e)
+
+
+# Vektet trekning blant fiender i formasjonen.
+func _pick_shooter() -> Dictionary:
+	var sum := 0.0
+	for e in enemies:
+		if e["alive"] and e["entered"] and not e["diving"]:
+			sum += e["fire_weight"]
+	if sum <= 0.0:
+		return {}
+	var r := rng.randf() * sum
+	for e in enemies:
+		if e["alive"] and e["entered"] and not e["diving"]:
+			r -= e["fire_weight"]
+			if r <= 0.0:
+				return e
+	return {}
+
+
+func _fire_from(e: Dictionary) -> void:
+	var pos: Vector2 = e["sprite"].position + MUZZLE_OFFSET
+	var dir := Vector2.DOWN
+	if e["aimed"]:
+		dir = (player_pos - pos).normalized()
+		dir.y = max(dir.y, MIN_DOWNWARD)
+		dir = dir.normalized()
+	emit_signal("fire_requested", pos, e["bullet"], dir)
+
+
+# ---------------------------------------------------------------------------
+# Treff
+# ---------------------------------------------------------------------------
+
+# Prøver å treffe en fiende i punktet p. Returnerer true hvis noen ble truffet.
+func try_hit(p: Vector2) -> bool:
+	var hit := false
+	var killed := false
+	for e in enemies:
+		if not e["alive"]:
+			continue
+		var ep: Vector2 = e["sprite"].position
+		if abs(p.x - ep.x) < HIT_HALF_SIZE.x and abs(p.y - ep.y) < HIT_HALF_SIZE.y:
+			hit = true
+			e["hp"] -= 1
+			if e["hp"] <= 0:
+				e["alive"] = false
+				e["sprite"].visible = false
+				emit_signal("enemy_killed", e["points"])
+				killed = true
+			else:
+				e["flash"] = FLASH_TIME
+				e["sprite"].modulate = FLASH_COLOR
+			break
+
+	# Signalet sendes etter løkka: mottakeren kan kalle spawn() og bytte ut lista.
+	if killed and alive_count() == 0:
+		emit_signal("cleared")
+	return hit

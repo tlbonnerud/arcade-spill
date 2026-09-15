@@ -70,10 +70,12 @@ func is_vulnerable() -> bool:
 	return controllable and invuln <= 0.0
 
 
-func hit_test(p: Vector2) -> bool:
+# extra utvider treffboksen, for ting som er større enn en kule (dykkende fiender).
+func hit_test(p: Vector2, extra: Vector2 = Vector2.ZERO) -> bool:
 	if not is_vulnerable():
 		return false
-	return abs(p.x - position.x) < HIT_HALF_SIZE.x and abs(p.y - position.y) < HIT_HALF_SIZE.y
+	var half := HIT_HALF_SIZE + extra
+	return abs(p.x - position.x) < half.x and abs(p.y - position.y) < half.y
 
 
 func take_hit() -> void:

@@ -107,19 +107,19 @@ Spritene som finnes i dag tildeles roller. Boss-sprite må tegnes.
 
 | Type | Sprite | Kule | HP | Poeng | Oppførsel |
 |---|---|---|---|---|---|
-| Grunt | Enemy_3 (manet) | Projectile_5, lilla kule | 1 | 10 | Skyter sjelden, rett ned. |
+| Grunt | Enemy_4 (manet) | Projectile_5, lilla kule | 1 | 10 | Skyter sjelden, rett ned. |
 | Soldat | Enemy_1 (kyklop) | Projectile_3, grønn | 1 | 20 | Skyter oftere. |
 | Skytter | Enemy_2 (vinget) | Projectile_4, blå | 2 | 30 | Sikter mot spilleren. |
-| Elite | Enemy_4 (hai) | Projectile_2, rød | 3 | 40 | Dykker ut av formasjonen mot spilleren, flyr tilbake. |
+| Elite | Enemy_3 (hai) | Projectile_2, rød | 3 | 40 | Dykker ut av formasjonen mot spilleren, flyr tilbake. |
 | Boss | Boss.png (160×90, 6 frames) | ikke bestemt | 60 | 1000 | Tre faser, se under. |
 
 Spilleren skyter med Projectile_1 (gul/oransje bolt). Kuletypene er definert
 i `core/bullets.gd` (`KINDS`), og hvilken fiende som bruker hvilken står i
-`enemies/swarm.gd` (`ROW_BULLETS`).
+`enemies/enemy_types.gd` (`TYPES`).
 
-Skalering per bølge: `hp × (1 + 0,15 × (bølge − 1))` rundet opp, og
-skytefrekvens `× (1 + 0,1 × (bølge − 1))`. Tallene bor i `waves/waves.gd`,
-ikke spredt rundt i koden.
+Skalering per bølge: hver bølge har `hp_mult` (hp × dette, avrundet til
+nærmeste, minst 1), `fire_rate_mult`, `speed_mult` og `bullet_speed_mult`.
+Tallene bor i `waves/waves.gd`, ikke spredt rundt i koden.
 
 ## Bølgetabell (v1)
 
