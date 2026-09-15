@@ -9,7 +9,7 @@ extends Node2D
 signal enemy_killed(points)
 signal cleared              # alle fiender i bølgen er døde
 signal reached_bottom       # svermen nådde spillerens høyde
-signal fire_requested(pos)  # en fiende vil skyte fra pos
+signal fire_requested(pos, kind)  # en fiende vil skyte fra pos; kind er kuletype (bullets.gd KINDS)
 
 const SPRITES := "res://games/ailien_invaders/sprites/"
 
@@ -25,9 +25,11 @@ const ANIM_INTERVAL := 0.35
 const HIT_HALF_SIZE := Vector2(14, 12)
 const MUZZLE_OFFSET := Vector2(0, 12)
 
-# Én fiendetype per rad (øverst til nederst) og poeng for hver.
+# Én fiendetype per rad (øverst til nederst), poeng og kuletype for hver.
+# Kulefargen følger fienden: rød hai, blå vinget, grønn kyklop, lilla manet.
 const ROW_TEXTURES := ["Enemy_4.png", "Enemy_2.png", "Enemy_1.png", "Enemy_3.png"]
 const ROW_POINTS := [40, 30, 20, 10]
+const ROW_BULLETS := ["red", "blue", "green", "orb"]
 
 var area_size := Vector2(640, 360)
 var wave := 1
@@ -63,7 +65,7 @@ func spawn(wave_number: int) -> void:
 			s.hframes = hframes
 			s.position = Vector2(left + col * H_SPACING, GRID_TOP + row * V_SPACING)
 			add_child(s)
-			enemies.append({"sprite": s, "points": ROW_POINTS[row], "alive": true})
+			enemies.append({"sprite": s, "points": ROW_POINTS[row], "bullet": ROW_BULLETS[row], "alive": true})
 
 
 func alive_count() -> int:
@@ -125,7 +127,7 @@ func _fire(delta: float, allowed: bool) -> void:
 				alive.append(e)
 		if alive.size() > 0:
 			var e: Dictionary = alive[randi() % alive.size()]
-			emit_signal("fire_requested", position + e["sprite"].position + MUZZLE_OFFSET)
+			emit_signal("fire_requested", position + e["sprite"].position + MUZZLE_OFFSET, e["bullet"])
 
 
 # Prøver å treffe en fiende i punktet p. Returnerer true hvis noen ble truffet.

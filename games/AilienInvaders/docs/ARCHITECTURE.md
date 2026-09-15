@@ -76,7 +76,7 @@ main.gd
  │     lives_changed(n)    ──► main → HUD
  │     died                ──► main._set_game_over
  ├── swarm (swarm.gd)
- │     fire_requested(pos) ──► bullets.spawn_enemy_bullet
+ │     fire_requested(pos, kind) ──► bullets.spawn_enemy_bullet
  │     enemy_killed(pts)   ──► main → poeng
  │     cleared             ──► main → neste bølge
  │     reached_bottom      ──► main._set_game_over
@@ -183,7 +183,8 @@ Disse er ikke åpenbare, og koster timer hvis man går på dem:
 ## Ytelsesregler for Pi 3B+
 
 - Ingen fysikk, ingen `Area2D`, ingen `KinematicBody2D`. Manuell AABB.
-- Kuler tegnes i ett `draw_rect`-lag. Aldri én node per kule.
+- Kuler tegnes i ett lag med `draw_texture_rect_region` fra sprite-ark
+  (`Projectile_*.png`, 10×10-ruter). Aldri én node per kule.
 - Fiender er én `Sprite` hver, det er greit opp til ~40.
 - Unngå `load()` i `_process`. Alle teksturer preloades én gang.
 - Ikke lag nye `Label`-noder per frame. HUD oppdaterer `.text`.
