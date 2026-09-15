@@ -105,13 +105,17 @@ Regler for trekking:
 
 Spritene som finnes i dag tildeles roller. Boss-sprite må tegnes.
 
-| Type | Sprite | HP | Poeng | Oppførsel |
-|---|---|---|---|---|
-| Grunt | Enemy_3 | 1 | 10 | Skyter sjelden, rett ned. |
-| Soldat | Enemy_1 | 1 | 20 | Skyter oftere. |
-| Skytter | Enemy_2 | 2 | 30 | Sikter mot spilleren. |
-| Elite | Enemy_4 | 3 | 40 | Dykker ut av formasjonen mot spilleren, flyr tilbake. |
-| Boss | *mangler* (forslag 96×64, 4 frames) | 60 | 1000 | Tre faser, se under. |
+| Type | Sprite | Kule | HP | Poeng | Oppførsel |
+|---|---|---|---|---|---|
+| Grunt | Enemy_3 (manet) | Projectile_5, lilla kule | 1 | 10 | Skyter sjelden, rett ned. |
+| Soldat | Enemy_1 (kyklop) | Projectile_3, grønn | 1 | 20 | Skyter oftere. |
+| Skytter | Enemy_2 (vinget) | Projectile_4, blå | 2 | 30 | Sikter mot spilleren. |
+| Elite | Enemy_4 (hai) | Projectile_2, rød | 3 | 40 | Dykker ut av formasjonen mot spilleren, flyr tilbake. |
+| Boss | Boss.png (160×90, 6 frames) | ikke bestemt | 60 | 1000 | Tre faser, se under. |
+
+Spilleren skyter med Projectile_1 (gul/oransje bolt). Kuletypene er definert
+i `core/bullets.gd` (`KINDS`), og hvilken fiende som bruker hvilken står i
+`enemies/swarm.gd` (`ROW_BULLETS`).
 
 Skalering per bølge: `hp × (1 + 0,15 × (bølge − 1))` rundet opp, og
 skytefrekvens `× (1 + 0,1 × (bølge − 1))`. Tallene bor i `waves/waves.gd`,
@@ -168,7 +172,7 @@ Bossen er sårbar hele tiden. Enkelt å forstå, vanskelig å overleve.
 Dagens tilnærming beholdes: ingen fysikk, ingen Area2D, manuell AABB-sjekk.
 
 - Maks 40 fiender + 1 boss samtidig.
-- Kuler tegnes fortsatt med `draw_rect` i ett lag. Pool på 64 kuler.
+- Kuler tegnes fortsatt i ett lag (sprite-ark via `draw_texture_rect_region`). Pool på 64 kuler.
 - Én tween per fiende under innflyging er greit (40 tweens i 1,5 s).
 - Bølge 7 er ytelsestesten. Holder den ikke 60 fps, kutter vi til 32.
 
