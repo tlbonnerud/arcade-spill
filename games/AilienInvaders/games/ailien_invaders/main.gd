@@ -38,6 +38,7 @@ var rng := RandomNumberGenerator.new()
 var state_timer := 0.0
 var bg_timer := 0.0
 var save_scores := true   # tester setter false så de ikke fyller highscore-lista
+var wave_rows := []       # tester kan legge inn egne bølgerader; tom = waves/waves.gd
 
 var score_label: Label
 var lives_label: Label
@@ -65,10 +66,10 @@ func _ready() -> void:
 
 func _build_background() -> void:
 	bg = Sprite.new()
-	bg.texture = load(SPRITES + "Background.png")
+	bg.texture = load(SPRITES + "new_background.png")
 	bg.hframes = 2
 	bg.centered = false
-	bg.scale = SIZE / Vector2(160, 90)
+	bg.scale = SIZE / (bg.texture.get_size() / Vector2(bg.hframes, 1))
 	add_child(bg)
 
 
@@ -135,10 +136,20 @@ func _start_run(seed_value: int = -1) -> void:
 func _start_wave(n: int) -> void:
 	wave = n
 	bullets.clear()
-	swarm.spawn(wave, rng)
+	swarm.spawn_data(wave, wave_data_for(wave), rng)
 	bullets.enemy_speed_mult = swarm.wave_data["bullet_speed_mult"]
-	wave_label.text = "BØLGE %d/%d" % [wave, Waves.count()]
+	wave_label.text = "BØLGE %d/%d" % [wave, wave_count()]
 	_set_state(State.WAVE_INTRO)
+
+
+func wave_count() -> int:
+	return Waves.count() if wave_rows.empty() else wave_rows.size()
+
+
+func wave_data_for(n: int) -> Dictionary:
+	if wave_rows.empty():
+		return Waves.get_wave(n)
+	return Waves.with_defaults(wave_rows[clamp(n - 1, 0, wave_rows.size() - 1)], n)
 
 
 func _set_state(next: int) -> void:
@@ -192,7 +203,7 @@ func _process(delta: float) -> void:
 			player.step(delta)
 			bullets.step(delta)
 			if state_timer >= WAVE_CLEAR_TIME:
-				if wave >= Waves.count():
+				if wave >= wave_count():
 					_set_state(State.VICTORY)
 				else:
 					_start_wave(wave + 1)
@@ -232,6 +243,8 @@ func _on_enemy_killed(points: int) -> void:
 func _on_wave_cleared() -> void:
 	if state == State.WAVE_INTRO or state == State.WAVE:
 		_set_state(State.WAVE_CLEAR)
+		if swarm.wave_data["bonus_life"] and player.add_life():
+			_show_message("+1 LIV")
 
 
 func _on_lives_changed(lives: int) -> void:

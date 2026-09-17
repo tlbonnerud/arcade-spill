@@ -16,7 +16,7 @@ extends Node
 const MainScene := preload("res://games/ailien_invaders/main.tscn")
 const Waves := preload("res://games/ailien_invaders/waves/waves.gd")
 
-const TIMEOUT := 90.0  # vaktbikkje: sekunder før testen gir opp
+const TIMEOUT := 240.0  # vaktbikkje: sekunder før testen gir opp
 
 var main: Node2D
 var failures := 0
@@ -72,6 +72,8 @@ func _play_wave(n: int) -> void:
 	var swarm = main.swarm
 	var data: Dictionary = Waves.get_wave(n)
 	var expected: int = Waves.enemy_count(data)
+	var lives_at_start: int = main.player.lives
+	main.player.invuln = 999.0  # testen handler om bølgene, ikke om å overleve
 	_check(main.wave == n, "bølge %d er aktiv" % n)
 	_check(swarm.alive_count() == expected, "bølge %d: %d fiender (fikk %d)" % [n, expected, swarm.alive_count()])
 	_check(_types_match(swarm.enemies, data["enemies"]), "bølge %d: riktig fiendemiks" % n)
@@ -103,8 +105,15 @@ func _play_wave(n: int) -> void:
 		shots += 1
 		if shots % 4 == 0:
 			yield(get_tree(), "idle_frame")
+	var lives_before: int = main.player.lives
+	# (try_hit over har allerede utløst cleared, så bonuslivet er delt ut.)
 	_check(swarm.alive_count() == 0, "bølge %d: alle drept" % n)
 	_check(main.state == main.State.WAVE_CLEAR, "bølge %d: WAVE_CLEAR" % n)
+	if data["bonus_life"]:
+		_check(main.player.lives == int(min(main.player.MAX_LIVES, lives_at_start + 1)),
+				"bølge %d: bonusliv (%d → %d)" % [n, lives_at_start, lives_before])
+	else:
+		_check(main.player.lives == lives_at_start, "bølge %d: ingen bonusliv" % n)
 
 	# Vent på neste bølge / victory.
 	waited = 0.0

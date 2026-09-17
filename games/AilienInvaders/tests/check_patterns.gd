@@ -6,6 +6,7 @@ extends Node
 #   AILIEN_CHECK=formations ../../tools/Godot3.app/Contents/MacOS/Godot --no-window --path . res://tests/check_patterns.tscn
 #
 # AILIEN_CHECK: formations | entries | movements | waves | all (standard).
+# AILIEN_WAVES_JSON: fil med bølgerader som "waves" sjekker i stedet for waves.gd.
 # Hver modus laster bare sin egen fil (pluss syntetiske plasser), så en feil i
 # én mønsterfil ikke velter testen for de andre. "waves" laster alt og sjekker
 # hver kombinasjon bølgene faktisk kan trekke.
@@ -225,8 +226,14 @@ func _check_waves() -> void:
 	if F == null or E == null or M == null or W == null or T == null:
 		_fail("en av skriptfilene lar seg ikke laste")
 		return
-	for n in range(1, W.count() + 1):
-		var data: Dictionary = W.get_wave(n)
+	var rows := []
+	if OS.get_environment("AILIEN_WAVES_JSON") != "":
+		rows = W.rows_from_json(OS.get_environment("AILIEN_WAVES_JSON"))
+		if not _ok(not rows.empty(), "AILIEN_WAVES_JSON lar seg lese"):
+			return
+	var wave_total: int = W.count() if rows.empty() else rows.size()
+	for n in range(1, wave_total + 1):
+		var data: Dictionary = W.get_wave(n) if rows.empty() else W.with_defaults(rows[n - 1], n)
 		var tag := "bølge %d" % n
 		var count: int = W.enemy_count(data)
 		_ok(count >= 8 and count <= 40, "%s: %d fiender (8–40, Pi-grensa)" % [tag, count])

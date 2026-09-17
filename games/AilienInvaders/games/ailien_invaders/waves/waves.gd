@@ -20,6 +20,7 @@ extends Reference
 #   bullet_speed_mult fiendekulenes fart × dette
 #   max_bullets    tak på fiendekuler i lufta samtidig
 #   banner         tekst i WAVE_INTRO (standard "BØLGE N")
+#   bonus_life     true: +1 liv når bølgen er klarert (maks player.MAX_LIVES)
 #
 # Ny bølge = ny rad. Nytt mønster = ny funksjon i enemies/, så navnet her.
 
@@ -37,6 +38,7 @@ const DEFAULTS := {
 	"speed_mult": 1.0,
 	"bullet_speed_mult": 1.0,
 	"max_bullets": 3,
+	"bonus_life": false,
 }
 
 const WAVES := [
@@ -81,13 +83,32 @@ static func count() -> int:
 
 # Bølge n (1-basert) med standardverdier fylt inn.
 static func get_wave(n: int) -> Dictionary:
+	return with_defaults(WAVES[clamp(n - 1, 0, WAVES.size() - 1)], n)
+
+
+# Fyller inn DEFAULTS i en rad. Brukes også av tester som lager egne rader.
+static func with_defaults(row: Dictionary, n: int) -> Dictionary:
 	var data := DEFAULTS.duplicate()
-	var src: Dictionary = WAVES[clamp(n - 1, 0, WAVES.size() - 1)]
-	for key in src:
-		data[key] = src[key]
+	for key in row:
+		data[key] = row[key]
 	if not data.has("banner"):
 		data["banner"] = "BØLGE %d" % n
 	return data
+
+
+# Leser bølgerader fra en JSON-fil med samme felt som WAVES. Testene bruker
+# dette (AILIEN_WAVES_JSON) til å prøve ut bølger uten å endre denne fila.
+static func rows_from_json(path: String) -> Array:
+	var f := File.new()
+	if f.open(path, File.READ) != OK:
+		push_error("Kan ikke åpne " + path)
+		return []
+	var parsed := JSON.parse(f.get_as_text())
+	f.close()
+	if parsed.error != OK or typeof(parsed.result) != TYPE_ARRAY:
+		push_error("Ugyldig JSON i %s (linje %d): %s" % [path, parsed.error_line, parsed.error_string])
+		return []
+	return parsed.result
 
 
 static func enemy_count(data: Dictionary) -> int:

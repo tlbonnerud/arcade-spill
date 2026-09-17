@@ -56,10 +56,16 @@ func setup(size: Vector2) -> void:
 
 # Bygger bølge wave_number. rng gir reproduserbare valg fra poolene.
 func spawn(wave_number: int, run_rng: RandomNumberGenerator = null) -> void:
+	spawn_data(wave_number, Waves.get_wave(wave_number), run_rng)
+
+
+# Bygger en bølge fra en ferdig utfylt rad (se Waves.with_defaults). Tester
+# bruker denne til å tvinge fram bestemte mønstre.
+func spawn_data(wave_number: int, data: Dictionary, run_rng: RandomNumberGenerator = null) -> void:
 	wave = wave_number
 	if run_rng != null:
 		rng = run_rng
-	wave_data = Waves.get_wave(wave)
+	wave_data = data
 
 	for child in get_children():
 		remove_child(child)
@@ -87,8 +93,36 @@ func spawn(wave_number: int, run_rng: RandomNumberGenerator = null) -> void:
 	move_state = Movements.start(wave_data["chosen"]["movement"], area_size,
 			slots, wave_data["descent_time"])
 
+	# Typene fyller formasjonen ovenfra, og innenfor en rad fra midten og ut.
+	# Da blir fargene speilsymmetriske også når en type tar slutt midt i en rad.
+	var order := _fill_order(slots)
+	var type_of := []
+	type_of.resize(total)
+	for k in total:
+		type_of[order[k]] = type_ids[k]
 	for i in total:
-		enemies.append(_make_enemy(type_ids[i], slots[i], entries[i]))
+		enemies.append(_make_enemy(type_of[i], slots[i], entries[i]))
+
+
+# Plassindekser i rekkefølgen typene skal fylle dem: rad for rad ovenfra
+# (plassene er alt sortert slik), og innenfor raden nærmest midten først.
+func _fill_order(slots: Array) -> Array:
+	var cx := area_size.x / 2
+	var order := []
+	var i := 0
+	while i < slots.size():
+		var row := [i]
+		var j := i + 1
+		while j < slots.size() and abs(slots[j].y - slots[i].y) < 1.0:
+			# Sett inn sortert på avstand fra midten (radene er korte).
+			var k := row.size()
+			while k > 0 and abs(slots[row[k - 1]].x - cx) > abs(slots[j].x - cx):
+				k -= 1
+			row.insert(k, j)
+			j += 1
+		order += row
+		i = j
+	return order
 
 
 func _pick(pool: Array):

@@ -14,6 +14,7 @@ signal died                  # ingen liv igjen
 const TEXTURE := "res://games/ailien_invaders/sprites/Romskip.png"
 const SPEED := 220.0
 const START_LIVES := 3
+const MAX_LIVES := 5
 const INVULN_TIME := 2.0
 const EDGE_MARGIN := 20.0
 const HIT_HALF_SIZE := Vector2(12, 10)  # halv bredde/høyde på treffboksen
@@ -71,6 +72,15 @@ func step(delta: float) -> void:
 		visible = int(OS.get_ticks_msec() / 100) % 2 == 0
 	else:
 		visible = true
+
+
+# Bonusliv (fra bølgedataene). Returnerer false hvis spilleren alt har maks.
+func add_life() -> bool:
+	if lives >= MAX_LIVES:
+		return false
+	lives += 1
+	emit_signal("lives_changed", lives)
+	return true
 
 
 func is_vulnerable() -> bool:

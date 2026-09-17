@@ -12,6 +12,8 @@ extends Node
 #   AILIEN_SIM_SKILL  average | good | perfect (standard good)
 #   AILIEN_SIM_MODE   waves | run | both (standard both)
 #   AILIEN_SIM_JSON   fil som får resultatene som JSON
+#   AILIEN_WAVES_JSON fil med bølgerader (JSON-liste, samme felt som WAVES i
+#                     waves.gd) som brukes i stedet for waves.gd
 #
 # "waves": hver bølge for seg, med 3 friske liv. Viser bølgens egen vanskelighet.
 # "run":   hele spillet fra bølge 1 med 3 liv, slik spilleren opplever det.
@@ -65,6 +67,13 @@ func _run() -> void:
 	main.set_process(false)
 	main.save_scores = false
 	main.swarm.connect("reached_bottom", self, "_on_reached_bottom")
+	var rows_path := _env("AILIEN_WAVES_JSON", "")
+	if rows_path != "":
+		main.wave_rows = Waves.rows_from_json(rows_path)
+		if main.wave_rows.empty():
+			print("FEIL: ingen bølger i ", rows_path)
+			get_tree().quit(1)
+			return
 
 	var runs := int(_env("AILIEN_SIM_RUNS", "10"))
 	var mode := _env("AILIEN_SIM_MODE", "both")
@@ -365,7 +374,7 @@ func _report_wave(n: int, stats: Array) -> Dictionary:
 		if avg > worst_lost:
 			worst_lost = avg
 			worst = "%s (%.1f liv, %d/%d klart)" % [key, avg, combos[key]["cleared"], combos[key]["n"]]
-	var count: int = Waves.enemy_count(Waves.get_wave(n))
+	var count: int = Waves.enemy_count(main.wave_data_for(n))
 	var total := float(stats.size())
 	print("%5d  %7d  %5.0f%%  %8.1fs  %8.2f  (%4.2f/%4.2f)    %4.0f%%  %3.0f%%  %5.1f  %s" % [n, count,
 			100.0 * cleared / total, _mean(times), _mean(lost), _mean(by_bullet), _mean(by_diver),
@@ -388,7 +397,7 @@ func _mean(values: Array) -> float:
 func _parse_waves(spec: String) -> Array:
 	var out := []
 	if spec == "":
-		for n in range(1, Waves.count() + 1):
+		for n in range(1, main.wave_count() + 1):
 			out.append(n)
 		return out
 	for part in spec.split(","):
