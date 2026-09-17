@@ -9,8 +9,24 @@ extends Reference
 # lett å teste uten skjerm).
 #
 # Hvert element: {"start": Vector2, "ctrl": Vector2, "delay": float, "duration": float}
+# Valgfritt "ctrl2": Vector2 gir kubisk bezier (start, ctrl, ctrl2, plass), som
+# trengs for S-kurver og løkker.
+#
+# KONTRAKT (sjekkes av tests/check_patterns.tscn for hvert navn i NAMES):
+#   1. Én bane per plass, i samme rekkefølge som slots.
+#   2. start ligger utenfor skjermen, og banen ender nøyaktig på plassen.
+#   3. Banen holder seg innenfor x ∈ [-80, 720] og y ∈ [-80, PATH_MAX_Y]:
+#      fiender skal aldri fly gjennom spillerens rad (det er ingen kollisjon
+#      under innflyging, så det ville sett ut som juks).
+#   4. Hele innflygingen (største delay + duration) tar maks MAX_TOTAL_TIME
+#      sekunder, også med 40 fiender. Skaler forsinkelsen med antallet.
+#   5. Samme rng-seed gir samme baner.
 
-const OFF := 48.0  # hvor langt utenfor skjermen de starter
+const NAMES := ["from_top", "from_sides", "spiral", "swoop"]
+
+const OFF := 48.0            # hvor langt utenfor skjermen de starter
+const PATH_MAX_Y := 300.0
+const MAX_TOTAL_TIME := 4.5
 
 
 static func build(kind: String, slots: Array, area: Vector2, rng: RandomNumberGenerator) -> Array:
@@ -96,4 +112,16 @@ static func point(entry: Dictionary, end: Vector2, u: float) -> Vector2:
 	var start: Vector2 = entry["start"]
 	var ctrl: Vector2 = entry["ctrl"]
 	var it := 1.0 - t
+	if entry.has("ctrl2"):
+		var ctrl2: Vector2 = entry["ctrl2"]
+		return it * it * it * start + 3.0 * it * it * t * ctrl \
+				+ 3.0 * it * t * t * ctrl2 + t * t * t * end
 	return it * it * start + 2.0 * it * t * ctrl + t * t * end
+
+
+# Hvor lenge hele innflygingen varer.
+static func total_time(entries: Array) -> float:
+	var longest := 0.0
+	for e in entries:
+		longest = max(longest, e["delay"] + e["duration"])
+	return longest

@@ -8,11 +8,15 @@ extends Reference
 #   formations     pool, én trekkes per run: rows, v_shape, ring, checkerboard
 #   entries        pool: from_top, from_sides, spiral, swoop
 #   movements      pool: classic, sine
-#   dives          true: fiender med can_dive dykker mot spilleren
-#   dive_interval  sekunder mellom dykk
+#   descent_time   sekunder til formasjonen når bunnen hvis ingen dør. Dette
+#                  er bølgens "klokke"; det går fortere jo flere som er døde.
+#   dives          true: fiender dykker mot spilleren
+#   dive_types     hvem som dykker; tom liste = typene med can_dive
+#   dive_interval  sekunder mellom hvert nytt dykk
+#   max_divers     hvor mange som kan dykke samtidig
 #   hp_mult        fiendenes hp × dette, avrundet (minst 1)
 #   fire_rate_mult skytefrekvens × dette
-#   speed_mult     formasjonens fart × dette
+#   speed_mult     formasjonens sideveis fart/tempo × dette
 #   bullet_speed_mult fiendekulenes fart × dette
 #   max_bullets    tak på fiendekuler i lufta samtidig
 #   banner         tekst i WAVE_INTRO (standard "BØLGE N")
@@ -23,8 +27,11 @@ const DEFAULTS := {
 	"formations": ["rows"],
 	"entries": ["from_top"],
 	"movements": ["classic"],
+	"descent_time": 100.0,
 	"dives": false,
+	"dive_types": [],
 	"dive_interval": 3.0,
+	"max_divers": 1,
 	"hp_mult": 1.0,
 	"fire_rate_mult": 1.0,
 	"speed_mult": 1.0,

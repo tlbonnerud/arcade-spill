@@ -24,6 +24,9 @@ var start_position := Vector2.ZERO
 var lives := START_LIVES
 var invuln := 0.0
 var controllable := true  # false under game over
+# Settes av tester (og senere attract-modus) for å styre skipet uten input:
+# {"dir": -1.0..1.0, "fire": bool}. null = vanlig input.
+var autopilot = null
 
 
 func _ready() -> void:
@@ -53,9 +56,13 @@ func step(delta: float) -> void:
 		return
 
 	var dir := Input.get_action_strength("p1_right") - Input.get_action_strength("p1_left")
+	var fire := Input.is_action_just_pressed("p1_a")
+	if autopilot != null:
+		dir = clamp(autopilot["dir"], -1.0, 1.0)
+		fire = autopilot["fire"]
 	position.x = clamp(position.x + dir * SPEED * delta, EDGE_MARGIN, area_width - EDGE_MARGIN)
 
-	if Input.is_action_just_pressed("p1_a"):
+	if fire:
 		emit_signal("fire_requested", position + MUZZLE_OFFSET)
 
 	frame = int(OS.get_ticks_msec() / 120) % 4

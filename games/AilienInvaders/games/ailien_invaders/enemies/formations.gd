@@ -7,6 +7,22 @@ extends Reference
 #
 # Alle formasjoner er sentrert horisontalt og holder seg innenfor
 # SIDE_MARGIN, så samme formasjon virker med 16 eller 40 fiender.
+#
+# KONTRAKT (sjekkes av tests/check_patterns.tscn for hvert navn i NAMES,
+# for 8 til 40 fiender):
+#   1. Nøyaktig `count` plasser, sortert ovenfra og ned.
+#   2. x ∈ [SIDE_MARGIN, area.x - SIDE_MARGIN], y ∈ [MIN_Y, MAX_Y]. Blir
+#      formasjonen for høy med mange fiender, må den bli bredere/tettere,
+#      ikke lavere: under MAX_Y trengs plassen til nedstigningen.
+#   3. Minst MIN_SPACING px mellom to plasser (32 px sprites skal ikke
+#      ligge oppå hverandre).
+#   4. Sentrert: snittet av x ligger innen 20 px fra midten av skjermen.
+
+const NAMES := ["rows", "v_shape", "ring", "checkerboard"]
+
+const MIN_Y := 40.0
+const MAX_Y := 230.0
+const MIN_SPACING := 28.0
 
 const TOP := 60.0
 const SIDE_MARGIN := 40.0
@@ -107,13 +123,3 @@ static func _checkerboard(count: int, area: Vector2) -> Array:
 				placed += 1
 		row += 1
 	return out
-
-
-# Halv bredde av formasjonen målt fra midten av skjermen. Brukes av
-# sinus-bevegelsen for å vite hvor langt den kan svaie.
-static func half_width(slots: Array, area: Vector2) -> float:
-	var cx := area.x / 2
-	var w := 0.0
-	for s in slots:
-		w = max(w, abs(s.x - cx))
-	return w

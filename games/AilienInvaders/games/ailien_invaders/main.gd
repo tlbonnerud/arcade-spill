@@ -37,6 +37,7 @@ var run_seed := 0
 var rng := RandomNumberGenerator.new()
 var state_timer := 0.0
 var bg_timer := 0.0
+var save_scores := true   # tester setter false så de ikke fyller highscore-lista
 
 var score_label: Label
 var lives_label: Label
@@ -151,14 +152,19 @@ func _set_state(next: int) -> void:
 			bullets.clear()
 		State.VICTORY:
 			player.controllable = false
-			Arcade.save_highscore(GAME_ID, "P1", score)
+			_save_score()
 			_show_message("DU VANT!\nPoeng: %d   Rekord: %d\nSTART = nytt spill"
 					% [score, Arcade.get_best_score(GAME_ID)])
 		State.GAME_OVER:
 			player.controllable = false
 			player.visible = false
-			Arcade.save_highscore(GAME_ID, "P1", score)
+			_save_score()
 			bullets.update()
+
+
+func _save_score() -> void:
+	if save_scores:
+		Arcade.save_highscore(GAME_ID, "P1", score)
 
 
 func _show_message(text: String) -> void:

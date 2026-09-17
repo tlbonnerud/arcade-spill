@@ -26,6 +26,7 @@ var elapsed := 0.0
 func _ready() -> void:
 	main = MainScene.instance()
 	add_child(main)
+	main.save_scores = false  # ikke fyll highscore-lista med testpoeng
 	call_deferred("_run")
 
 
@@ -138,7 +139,7 @@ func _all_offscreen(swarm) -> bool:
 
 func _all_on_slots(swarm) -> bool:
 	for e in swarm.enemies:
-		if e["alive"] and e["sprite"].position.distance_to(e["slot"] + swarm.offset) > 1.0:
+		if e["alive"] and e["sprite"].position.distance_to(swarm.slot_position(e)) > 1.0:
 			return false
 	return true
 

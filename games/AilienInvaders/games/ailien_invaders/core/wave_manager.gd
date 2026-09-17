@@ -23,7 +23,7 @@ const Entries := preload("res://games/ailien_invaders/enemies/entry_patterns.gd"
 const Movements := preload("res://games/ailien_invaders/enemies/movement_patterns.gd")
 const Waves := preload("res://games/ailien_invaders/waves/waves.gd")
 
-const BOTTOM_LIMIT := 304.0
+const BOTTOM_LIMIT := Movements.BOTTOM_LIMIT
 const ANIM_INTERVAL := 0.35
 const HIT_HALF_SIZE := Vector2(14, 12)
 const MUZZLE_OFFSET := Vector2(0, 12)
@@ -39,13 +39,12 @@ var wave := 1
 var wave_data := {}
 var enemies := []            # se _make_enemy
 var total := 0
-var offset := Vector2.ZERO   # formasjonens forskyvning fra plassene
-var move_state := {}
+var move_state := {}          # tilstanden til bevegelsesmønsteret (enemies/movement_patterns.gd)
 var entering := false
 var anim_timer := 0.0
 var fire_timer := 1.5
 var dive_timer := 0.0
-var diver = null             # dictionary fra enemies, eller null
+var divers := []             # fiender (dictionaries fra enemies) som dykker nå
 var player_pos := Vector2(320, 330)
 var rng := RandomNumberGenerator.new()
 
@@ -66,8 +65,7 @@ func spawn(wave_number: int, run_rng: RandomNumberGenerator = null) -> void:
 		remove_child(child)
 		child.queue_free()
 	enemies.clear()
-	diver = null
-	offset = Vector2.ZERO
+	divers.clear()
 	entering = true
 	fire_timer = 1.5
 	dive_timer = wave_data["dive_interval"]
@@ -87,7 +85,7 @@ func spawn(wave_number: int, run_rng: RandomNumberGenerator = null) -> void:
 	var slots: Array = Formations.build(wave_data["chosen"]["formation"], total, area_size)
 	var entries: Array = Entries.build(wave_data["chosen"]["entry"], slots, area_size, rng)
 	move_state = Movements.start(wave_data["chosen"]["movement"], area_size,
-			Formations.half_width(slots, area_size))
+			slots, wave_data["descent_time"])
 
 	for i in total:
 		enemies.append(_make_enemy(type_ids[i], slots[i], entries[i]))
@@ -112,7 +110,7 @@ func _make_enemy(type_id: String, slot: Vector2, entry: Dictionary) -> Dictionar
 		"points": type["points"],
 		"bullet": type["bullet"],
 		"aimed": type["aimed"],
-		"can_dive": type["can_dive"],
+		"can_dive": _can_dive(type_id, type),
 		"fire_weight": type["fire_weight"],
 		"alive": true,
 		"slot": slot,
@@ -123,6 +121,14 @@ func _make_enemy(type_id: String, slot: Vector2, entry: Dictionary) -> Dictionar
 		"dive": {},
 		"flash": 0.0,
 	}
+
+
+# Bølgen kan overstyre hvem som dykker med "dive_types"; ellers gjelder typen.
+func _can_dive(type_id: String, type: Dictionary) -> bool:
+	var allowed: Array = wave_data["dive_types"]
+	if allowed.empty():
+		return type["can_dive"]
+	return type_id in allowed
 
 
 # ---------------------------------------------------------------------------
@@ -143,9 +149,17 @@ func is_entering() -> bool:
 
 # Posisjonene til fiender som dykker, for kontaktsjekk mot spilleren.
 func diver_positions() -> Array:
-	if diver != null and diver["alive"]:
-		return [diver["sprite"].position]
-	return []
+	var out := []
+	for d in divers:
+		if d["alive"]:
+			out.append(d["sprite"].position)
+	return out
+
+
+# Hvor fiendens plass i formasjonen er akkurat nå (der den står, eller skal
+# tilbake til etter et dykk).
+func slot_position(e: Dictionary) -> Vector2:
+	return Movements.place(move_state, e["slot"])
 
 
 func enemy_positions() -> Array:
@@ -225,10 +239,10 @@ func _step_movement(delta: float) -> void:
 		"min_x": min_x,
 		"max_x": max_x,
 	}
-	offset = Movements.step(move_state, delta, ctx)
+	Movements.step(move_state, delta, ctx)
 	for e in enemies:
 		if e["alive"] and not e["diving"]:
-			e["sprite"].position = e["slot"] + offset
+			e["sprite"].position = Movements.place(move_state, e["slot"])
 
 
 func _check_bottom() -> void:
@@ -239,43 +253,43 @@ func _check_bottom() -> void:
 
 
 # ---------------------------------------------------------------------------
-# Dykk: én fiende om gangen forlater plassen, stuper mot spilleren i en bue,
-# skyter i bunnen og flyr tilbake til plassen sin (som kan ha flyttet seg).
+# Dykk: en fiende forlater plassen, stuper mot spilleren i en bue, skyter i
+# bunnen og flyr tilbake til plassen sin (som kan ha flyttet seg). Bølgen
+# bestemmer hvor ofte (dive_interval) og hvor mange samtidig (max_divers).
 # ---------------------------------------------------------------------------
 
 func _step_dive(delta: float) -> void:
-	if diver == null:
-		if not wave_data["dives"]:
-			return
+	if wave_data["dives"] and divers.size() < int(wave_data["max_divers"]):
 		dive_timer -= delta
 		if dive_timer <= 0.0:
+			dive_timer = wave_data["dive_interval"]
 			_start_dive()
-		return
 
-	if not diver["alive"]:
-		diver = null
-		dive_timer = wave_data["dive_interval"]
-		return
+	for e in divers.duplicate():
+		if not e["alive"]:
+			divers.erase(e)
+			continue
+		_step_diver(e, delta)
 
-	var d: Dictionary = diver["dive"]
-	var s: Sprite = diver["sprite"]
+
+func _step_diver(e: Dictionary, delta: float) -> void:
+	var d: Dictionary = e["dive"]
+	var s: Sprite = e["sprite"]
 	if d["phase"] == 0:
 		d["t"] += delta / DIVE_DOWN_TIME
 		s.position = _bezier(d["p0"], d["ctrl"], d["target"], min(d["t"], 1.0))
 		if d["t"] >= 1.0:
-			_fire_from(diver)
+			_fire_from(e)
 			d["phase"] = 1
 			d["t"] = 0.0
 			d["p0"] = d["target"]
-			d["ctrl"] = Vector2(d["target"].x - d["side"] * 160.0, (d["target"].y + diver["slot"].y) / 2)
+			d["ctrl"] = Vector2(d["target"].x - d["side"] * 160.0, (d["target"].y + e["slot"].y) / 2)
 	else:
 		d["t"] += delta / DIVE_UP_TIME
-		var home: Vector2 = diver["slot"] + offset
-		s.position = _bezier(d["p0"], d["ctrl"], home, min(d["t"], 1.0))
+		s.position = _bezier(d["p0"], d["ctrl"], slot_position(e), min(d["t"], 1.0))
 		if d["t"] >= 1.0:
-			diver["diving"] = false
-			diver = null
-			dive_timer = wave_data["dive_interval"]
+			e["diving"] = false
+			divers.erase(e)
 
 
 func _start_dive() -> void:
@@ -284,7 +298,6 @@ func _start_dive() -> void:
 		if e["alive"] and e["can_dive"] and not e["diving"]:
 			candidates.append(e)
 	if candidates.empty():
-		dive_timer = wave_data["dive_interval"]
 		return
 	var e: Dictionary = candidates[rng.randi() % candidates.size()]
 	var p0: Vector2 = e["sprite"].position
@@ -299,7 +312,7 @@ func _start_dive() -> void:
 		"ctrl": Vector2(p0.x + side * 160.0, (p0.y + target.y) / 2),
 		"target": target,
 	}
-	diver = e
+	divers.append(e)
 
 
 static func _bezier(p0: Vector2, ctrl: Vector2, p2: Vector2, u: float) -> Vector2:
