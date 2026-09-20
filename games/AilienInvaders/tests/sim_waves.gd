@@ -21,9 +21,14 @@ extends Node
 # Boten er en modell av en menneskelig spiller, ikke en perfekt maskin:
 # den reagerer med forsinkelse, ser bare kuler et stykke fram, overser noen,
 # og sikter litt feil. "good" skal ligne en øvet arkadespiller.
+# Ett sted jukser den: den leser dykkets mål rett fra spillet, der et menneske
+# må lese banen. Dykkerfaren i tallene er derfor litt for snill.
 
-const MainScene := preload("res://games/ailien_invaders/main.tscn")
-const Waves := preload("res://games/ailien_invaders/waves/waves.gd")
+# load() i _ready, ikke preload: en parsefeil i spillet skal gi "FEIL" og
+# kode 1, ikke en Godot-prosess som blir stående for alltid.
+const MAIN_SCENE := "res://games/ailien_invaders/main.tscn"
+const WAVES_SCRIPT := "res://games/ailien_invaders/waves/waves.gd"
+const STALL_FRAMES := 600  # så mange tomme frames uten framdrift = _run har krasjet
 
 const DT := 1.0 / 60.0
 const WAVE_TIMEOUT := 300.0
@@ -37,7 +42,9 @@ const SKILLS := {
 	"perfect": {"react": 0.0,  "look": 1.00, "blind": 0.0,  "aim_noise": 0.0, "fire_delay": 0.02},
 }
 
+var Waves
 var main: Node2D
+var stalled_frames := 0
 var skill := {}
 var skill_name := "good"
 var bot_rng := RandomNumberGenerator.new()
@@ -56,10 +63,34 @@ var vel := {}
 
 func _ready() -> void:
 	skill_name = _env("AILIEN_SIM_SKILL", "good")
-	skill = SKILLS.get(skill_name, SKILLS["good"])
-	main = MainScene.instance()
+	if not SKILLS.has(skill_name):
+		_abort("ukjent AILIEN_SIM_SKILL '%s' (average, good, perfect)" % skill_name)
+		return
+	skill = SKILLS[skill_name]
+	Waves = load(WAVES_SCRIPT)
+	var scene = load(MAIN_SCENE)
+	if Waves == null or not Waves.can_instance() or scene == null:
+		_abort("waves.gd eller main.tscn lar seg ikke laste")
+		return
+	main = scene.instance()
 	add_child(main)
+	if main.get_script() == null or not main.has_method("wave_count"):
+		_abort("main.gd kompilerte ikke")
+		return
 	call_deferred("_run")
+
+
+# Hvert forsøk slipper til én frame. Går det mange frames uten at _run melder
+# framdrift, har en skriptfeil avbrutt den.
+func _process(_delta: float) -> void:
+	stalled_frames += 1
+	if stalled_frames > STALL_FRAMES:
+		_abort("simuleringen stoppet opp (skriptfeil?)")
+
+
+func _abort(why: String) -> void:
+	print("FEIL: ", why)
+	get_tree().quit(1)
 
 
 func _run() -> void:
@@ -71,13 +102,16 @@ func _run() -> void:
 	if rows_path != "":
 		main.wave_rows = Waves.rows_from_json(rows_path)
 		if main.wave_rows.empty():
-			print("FEIL: ingen bølger i ", rows_path)
-			get_tree().quit(1)
+			_abort("ingen bølger i " + rows_path)
 			return
 
 	var runs := int(_env("AILIEN_SIM_RUNS", "10"))
 	var mode := _env("AILIEN_SIM_MODE", "both")
 	var waves := _parse_waves(_env("AILIEN_SIM_WAVES", ""))
+	for n in waves:
+		if n < 1 or n > main.wave_count():
+			_abort("AILIEN_SIM_WAVES: bølge %d finnes ikke (1-%d)" % [n, main.wave_count()])
+			return
 	var result := {"skill": skill_name, "runs": runs, "waves": [], "full_runs": {}}
 
 	if mode in ["waves", "both"]:
@@ -87,6 +121,7 @@ func _run() -> void:
 			var stats := []
 			for r in runs:
 				stats.append(_play_wave(n, 1000 * n + r))
+				stalled_frames = 0
 				yield(get_tree(), "idle_frame")
 			result["waves"].append(_report_wave(n, stats))
 
@@ -101,6 +136,7 @@ func _run() -> void:
 			if res["won"]:
 				wins += 1
 				times.append(res["time"])
+			stalled_frames = 0
 			yield(get_tree(), "idle_frame")
 		reached.sort()
 		var histogram := {}

@@ -33,6 +33,8 @@ const DIVE_DOWN_TIME := 1.0
 const DIVE_UP_TIME := 1.3
 const DIVE_TARGET_Y := 320.0   # like over spillerens høyde
 const MIN_DOWNWARD := 0.35     # siktede kuler går aldri rett sidelengs
+const MIN_FIRE_WINDOW := 0.4   # s fra munning til spillerens treffboks; fiender som er lavere enn det skyter ikke
+const ENEMY_BULLET_SPEED := 150.0  # samme som core/bullets.gd
 
 var area_size := Vector2(640, 360)
 var wave := 1
@@ -235,7 +237,6 @@ func step(delta: float, fire_allowed: bool, player_position: Vector2) -> void:
 	_step_movement(delta)
 	_step_dive(delta)
 	_fire(delta, fire_allowed)
-	_check_bottom()
 
 
 func _step_entry(delta: float) -> void:
@@ -261,34 +262,38 @@ func _step_entry(delta: float) -> void:
 
 
 func _step_movement(delta: float) -> void:
+	# Ytterste levende plasser, også dykkernes: plassen deres hører fortsatt
+	# til formasjonen. Uten dem kunne formasjonen vandre ut mens en kantfiende
+	# dykket, og så rykke tilbake i ett hopp når den landet.
 	var min_x := area_size.x
 	var max_x := 0.0
+	var alive := 0
 	for e in enemies:
-		if e["alive"] and not e["diving"]:
+		if e["alive"]:
+			alive += 1
 			min_x = min(min_x, e["slot"].x)
 			max_x = max(max_x, e["slot"].x)
 	var ctx := {
-		"dead_frac": 1.0 - float(alive_count()) / max(1, total),
+		"dead_frac": 1.0 - float(alive) / max(1, total),
 		"speed_mult": wave_data["speed_mult"],
 		"min_x": min_x,
 		"max_x": max_x,
 	}
 	Movements.step(move_state, delta, ctx)
+	var lowest := 0.0
 	for e in enemies:
 		if e["alive"] and not e["diving"]:
-			e["sprite"].position = Movements.place(move_state, e["slot"])
-
-
-func _check_bottom() -> void:
-	for e in enemies:
-		if e["alive"] and not e["diving"] and e["sprite"].position.y >= BOTTOM_LIMIT:
-			emit_signal("reached_bottom")
-			return
+			var p: Vector2 = Movements.place(move_state, e["slot"])
+			e["sprite"].position = p
+			lowest = max(lowest, p.y)
+	# Formasjonen (ikke dykkere) har nådd spillerens høyde.
+	if lowest >= BOTTOM_LIMIT:
+		emit_signal("reached_bottom")
 
 
 # ---------------------------------------------------------------------------
-# Dykk: en fiende forlater plassen, stuper mot spilleren i en bue, skyter i
-# bunnen og flyr tilbake til plassen sin (som kan ha flyttet seg). Bølgen
+# Dykk: en fiende forlater plassen, stuper mot spilleren i en bue og flyr
+# tilbake til plassen sin (som kan ha flyttet seg). Faren er kroppen. Bølgen
 # bestemmer hvor ofte (dive_interval) og hvor mange samtidig (max_divers).
 # ---------------------------------------------------------------------------
 
@@ -313,7 +318,8 @@ func _step_diver(e: Dictionary, delta: float) -> void:
 		d["t"] += delta / DIVE_DOWN_TIME
 		s.position = _bezier(d["p0"], d["ctrl"], d["target"], min(d["t"], 1.0))
 		if d["t"] >= 1.0:
-			_fire_from(e)
+			# Dykkeren skyter ikke i bunnen: munningen ville ligget i spillerens
+			# rad, og en kule derfra er enten ufarlig eller umulig å unngå.
 			d["phase"] = 1
 			d["t"] = 0.0
 			d["p0"] = d["target"]
@@ -372,17 +378,26 @@ func _fire(delta: float, allowed: bool) -> void:
 func _pick_shooter() -> Dictionary:
 	var sum := 0.0
 	for e in enemies:
-		if e["alive"] and e["entered"] and not e["diving"]:
+		if e["alive"] and e["entered"] and not e["diving"] and _can_fire(e):
 			sum += e["fire_weight"]
 	if sum <= 0.0:
 		return {}
 	var r := rng.randf() * sum
 	for e in enemies:
-		if e["alive"] and e["entered"] and not e["diving"]:
+		if e["alive"] and e["entered"] and not e["diving"] and _can_fire(e):
 			r -= e["fire_weight"]
 			if r <= 0.0:
 				return e
 	return {}
+
+
+# En kule må være i lufta lenge nok til at spilleren kan reagere. Fiender
+# som står så lavt at kula når treffboksen på under MIN_FIRE_WINDOW sekunder
+# holder ilden (som de nederste radene i Space Invaders).
+func _can_fire(e: Dictionary) -> bool:
+	var speed: float = ENEMY_BULLET_SPEED * wave_data["bullet_speed_mult"]
+	var muzzle_y: float = e["sprite"].position.y + MUZZLE_OFFSET.y
+	return (DIVE_TARGET_Y - muzzle_y) / speed >= MIN_FIRE_WINDOW
 
 
 func _fire_from(e: Dictionary) -> void:

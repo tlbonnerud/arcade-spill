@@ -13,19 +13,33 @@ extends Node
 # at bølgene går over i hverandre og at runnet ender i VICTORY.
 # Avslutter med kode 0 (OK) eller 1 (feil).
 
-const MainScene := preload("res://games/ailien_invaders/main.tscn")
-const Waves := preload("res://games/ailien_invaders/waves/waves.gd")
+# Skript lastes med load() i _ready, ikke preload: et skript med parsefeil
+# ville ellers hindre denne fila i å laste, og da blir Godot stående for alltid.
+const MAIN_SCENE := "res://games/ailien_invaders/main.tscn"
+const WAVES_SCRIPT := "res://games/ailien_invaders/waves/waves.gd"
 
 const TIMEOUT := 240.0  # vaktbikkje: sekunder før testen gir opp
+const DT := 1.0 / 60.0
 
+var Waves
 var main: Node2D
 var failures := 0
 var elapsed := 0.0
 
 
 func _ready() -> void:
-	main = MainScene.instance()
+	Waves = load(WAVES_SCRIPT)
+	var scene = load(MAIN_SCENE)
+	if Waves == null or not Waves.can_instance() or scene == null:
+		print("FEIL: waves.gd eller main.tscn lar seg ikke laste")
+		get_tree().quit(1)
+		return
+	main = scene.instance()
 	add_child(main)
+	if main.get_script() == null or not main.has_method("wave_count"):
+		print("FEIL: main.gd kompilerte ikke")
+		get_tree().quit(1)
+		return
 	main.save_scores = false  # ikke fyll highscore-lista med testpoeng
 	call_deferred("_run")
 
@@ -39,6 +53,7 @@ func _process(delta: float) -> void:
 
 func _run() -> void:
 	yield(get_tree(), "idle_frame")
+	main._start_run(12345)  # fast seed, så en feil kan gjenskapes
 	_check(main.state == main.State.WAVE_INTRO, "starter i WAVE_INTRO")
 	_check(main.wave == 1, "starter på bølge 1")
 
@@ -48,17 +63,32 @@ func _run() -> void:
 	_check(main.state == main.State.VICTORY, "VICTORY etter siste bølge (state=%d)" % main.state)
 	_check(main.score > 0, "poeng er talt opp (%d)" % main.score)
 
-	# Samme seed skal gi samme valg fra poolene (bølge 2 har flere å velge i).
-	main.rng.seed = 4242
-	main._start_wave(2)
-	var a := _wave_signature()
-	main.rng.seed = 4242
-	main._start_wave(2)
-	var b := _wave_signature()
-	_check(a == b, "samme seed gir samme bølge (%s vs %s)" % [a, b])
-	main.rng.seed = 4243
-	main._start_wave(2)
-	print("  info seed 4243 gir ", _wave_signature())
+	# Samme seed skal gi samme bølge, også det som trekkes med rng (pooler,
+	# og forsinkelsene i "rain"). Bølge 9 og 10 har mest å trekke i.
+	for n in [9, 10]:
+		if n > Waves.count():
+			continue
+		main.rng.seed = 4242
+		main._start_wave(n)
+		var a := _wave_fingerprint()
+		main.rng.seed = 4242
+		main._start_wave(n)
+		var b := _wave_fingerprint()
+		_check(a == b, "bølge %d: samme seed gir samme bølge" % n)
+		var differs := false
+		for other_seed in range(1, 12):
+			main.rng.seed = other_seed
+			main._start_wave(n)
+			if _wave_fingerprint() != a:
+				differs = true
+		_check(differs, "bølge %d: andre seeds gir andre bølger" % n)
+
+	# En skriptfeil avbryter bare funksjonen den skjer i, så hver delsjekk
+	# returnerer true til slutt og "ikke true" teller som feil.
+	main.set_process(false)
+	_check(_check_diver_bounds() == true, "dykkergrenser: sjekken fullførte")
+	_check(_check_multiple_divers() == true, "flere dykkere: sjekken fullførte")
+	_check(_check_low_enemies_hold_fire() == true, "lav ild: sjekken fullførte")
 
 	if failures == 0:
 		print("OK: alle %d bølger spilt gjennom" % Waves.count())
@@ -123,6 +153,113 @@ func _play_wave(n: int) -> void:
 	yield(get_tree(), "idle_frame")
 
 
+# Alt rng-avhengig ved en nyspawnet bølge: valgte mønstre og hver bane inn.
+func _wave_fingerprint() -> String:
+	var parts := [_wave_signature()]
+	for e in main.swarm.enemies:
+		parts.append("%s %s %.3f" % [e["type"], str(e["entry"]["start"]), e["entry"]["delay"]])
+	return PoolStringArray(parts).join("|")
+
+
+# Regresjon: mens en kantfiende dykker hører plassen dens fortsatt til
+# formasjonen. Før vandret formasjonen ut av skjermen og rykket tilbake i ett
+# hopp når dykkeren landet (klassisk bevegelse + dykk = bølge 10).
+func _check_diver_bounds():
+	var swarm = main.swarm
+	var M = swarm.Movements
+	var row := {"enemies": [["elite", 8], ["grunt", 8]], "formations": ["rows"], "entries": ["from_top"],
+			"movements": ["classic"], "dives": true, "dive_interval": 0.5, "speed_mult": 1.6}
+	main.rng.seed = 99
+	swarm.spawn_data(1, Waves.with_defaults(row, 1), main.rng)
+	_step_swarm(6.0)
+	# Behold bare to: en elite helt til høyre (dykker) og en grunt helt til venstre.
+	var keep_right: Dictionary = {}
+	var keep_left: Dictionary = {}
+	for e in swarm.enemies:
+		if e["type"] == "elite" and (keep_right.empty() or e["slot"].x > keep_right["slot"].x):
+			keep_right = e
+		if e["type"] == "grunt" and (keep_left.empty() or e["slot"].x < keep_left["slot"].x):
+			keep_left = e
+	for e in swarm.enemies:
+		if e != keep_right and e != keep_left:
+			e["alive"] = false
+			e["sprite"].visible = false
+	var prev: Vector2 = keep_left["sprite"].position
+	var worst_step := 0.0
+	var off_screen := 0
+	var dives := 0
+	var was_diving := false
+	for _i in int(20.0 / DT):
+		swarm.step(DT, false, Vector2(320, 330))
+		var p: Vector2 = keep_left["sprite"].position
+		worst_step = max(worst_step, p.distance_to(prev))
+		prev = p
+		if keep_right["diving"] and not was_diving:
+			dives += 1
+		was_diving = keep_right["diving"]
+		for e in [keep_left, keep_right]:
+			if not e["diving"] and (e["sprite"].position.x < M.X_MIN or e["sprite"].position.x > M.X_MAX):
+				off_screen += 1
+	_check(dives >= 3, "dykkergrenser: eliten dykket (%d ganger)" % dives)
+	_check(worst_step <= M.MAX_STEP, "dykkergrenser: formasjonen hopper ikke (største steg %.1f px)" % worst_step)
+	_check(off_screen == 0, "dykkergrenser: ingen i formasjonen utenfor skjermen (%d frames)" % off_screen)
+	return true
+
+
+# max_divers > 1 brukes ikke av bølgene akkurat nå, så motoren testes her.
+func _check_multiple_divers():
+	var swarm = main.swarm
+	var row := {"enemies": [["elite", 8]], "formations": ["rows"], "entries": ["from_top"],
+			"dives": true, "dive_interval": 0.4, "max_divers": 2}
+	main.rng.seed = 5
+	swarm.spawn_data(1, Waves.with_defaults(row, 1), main.rng)
+	_step_swarm(4.0)
+	var most := 0
+	for _i in int(8.0 / DT):
+		swarm.step(DT, false, Vector2(320, 330))
+		most = int(max(most, swarm.diver_positions().size()))
+	_check(most == 2, "flere dykkere: to samtidig med max_divers 2 (fikk %d)" % most)
+	return true
+
+
+# Fiender som står så lavt at kula ikke kan unngås, holder ilden.
+func _check_low_enemies_hold_fire():
+	var swarm = main.swarm
+	var row := {"enemies": [["soldat", 8]], "formations": ["rows"], "entries": ["from_top"],
+			"descent_time": 20.0, "fire_rate_mult": 4.0}
+	main.rng.seed = 5
+	swarm.spawn_data(1, Waves.with_defaults(row, 1), main.rng)
+	_step_swarm(4.0)
+	var lowest_shot := [0.0]
+	swarm.connect("fire_requested", self, "_on_test_fire", [lowest_shot])
+	var t := 0.0
+	var reached := [false]
+	swarm.connect("reached_bottom", self, "_on_test_bottom", [reached])
+	while t < 30.0 and not reached[0]:
+		swarm.step(DT, true, Vector2(320, 330))
+		t += DT
+	swarm.disconnect("fire_requested", self, "_on_test_fire")
+	swarm.disconnect("reached_bottom", self, "_on_test_bottom")
+	var limit: float = swarm.DIVE_TARGET_Y - swarm.MIN_FIRE_WINDOW * swarm.ENEMY_BULLET_SPEED
+	_check(reached[0], "lav ild: formasjonen kom helt ned (%.1f s)" % t)
+	_check(lowest_shot[0] > 100.0 and lowest_shot[0] <= limit + 0.5,
+			"lav ild: laveste skudd fra y=%.0f (grense %.0f)" % [lowest_shot[0], limit])
+	return true
+
+
+func _on_test_fire(pos: Vector2, _kind: String, _dir: Vector2, lowest: Array) -> void:
+	lowest[0] = max(lowest[0], pos.y)
+
+
+func _on_test_bottom(reached: Array) -> void:
+	reached[0] = true
+
+
+func _step_swarm(seconds: float) -> void:
+	for _i in int(seconds / DT):
+		main.swarm.step(DT, false, Vector2(320, 330))
+
+
 func _wave_signature() -> String:
 	var c: Dictionary = main.swarm.wave_data["chosen"]
 	return "%s/%s/%s" % [c["formation"], c["entry"], c["movement"]]
@@ -138,9 +275,11 @@ func _types_match(enemies: Array, spec: Array) -> bool:
 	return true
 
 
+# Bruker banens startpunkt, ikke spritens posisjon akkurat nå: da avhenger
+# ikke sjekken av hvor lang den første framen tilfeldigvis ble.
 func _all_offscreen(swarm) -> bool:
 	for e in swarm.enemies:
-		var p: Vector2 = e["sprite"].position
+		var p: Vector2 = e["entry"]["start"]
 		if p.x >= 0 and p.x <= 640 and p.y >= 0 and p.y <= 360:
 			return false
 	return true

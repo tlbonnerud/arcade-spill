@@ -142,10 +142,15 @@ Kommer: INTRO, UPGRADE, BOSS_INTRO, BOSS (se DESIGN.md).
    bredde, og alt går fortere jo flere som er døde (`dead_frac`).
 4. Dykk: hvis bølgen har `dives`, forlater en fiende plassen sin hvert
    `dive_interval` sekund (opptil `max_divers` samtidig, typer fra
-   `dive_types` eller `can_dive`), stuper i en bue mot spilleren, skyter i
-   bunnen og flyr tilbake til plassen sin (som kan ha flyttet seg).
+   `dive_types` eller `can_dive`), stuper i en bue mot spilleren og flyr
+   tilbake til plassen sin (som kan ha flyttet seg). Faren er kroppen:
+   dykkeren skyter ikke, for en kule avfyrt i spillerens rad er enten ufarlig
+   eller umulig å unngå. Plassen til en dykker teller fortsatt med i
+   formasjonens kanter, ellers vandrer formasjonen ut mens den er borte.
 5. Skyting: vektet trekning (`fire_weight`) blant fiender i formasjonen.
-   `aimed` gir retning mot spilleren, ellers rett ned.
+   `aimed` gir retning mot spilleren, ellers rett ned. Fiender som står så
+   lavt at kula når spilleren på under `MIN_FIRE_WINDOW` (0,4 s) holder ilden,
+   så hvert skudd kan unngås.
 
 Typene i `enemies`-lista fyller formasjonen ovenfra og ned, og innenfor en
 rad fra midten og ut. Da blir fargebåndene speilsymmetriske også når en type
@@ -276,10 +281,20 @@ Avslutter med kode 0 når alt er grønt. De andre testene kjøres på samme måt
 
 | Test | Hva den gjør |
 |---|---|
-| `play_waves.tscn` | Spiller gjennom alle bølgene: antall, typer, innflyging, hp, overganger, bonusliv, VICTORY. |
+| `play_waves.tscn` | Spiller gjennom alle bølgene: antall, typer, innflyging, hp, overganger, bonusliv, VICTORY, seed-determinisme. Pluss regresjonssjekker: formasjonen hopper ikke når en kantfiende dykker, `max_divers` virker, lave fiender holder ilden. |
 | `check_patterns.tscn` | Kontraktene over. `AILIEN_CHECK=formations\|entries\|movements\|waves\|all`. |
 | `sim_waves.tscn` | En bot med menneskelige svakheter (reaksjonstid, begrenset blikk, overser kuler, sikter litt feil) spiller hver bølge mange ganger i hurtigtid og rapporterer klareringsrate, tid, tapte liv (kule/dykker) og verste kombinasjon. Brukes til å stille tallene i `waves.gd`. `AILIEN_SIM_SKILL=average\|good\|perfect`, `AILIEN_SIM_RUNS`, `AILIEN_SIM_WAVES="4-6"`. |
 | `screenshots.tscn` + `contact_sheets.py` | Bilder av hvert mønster, satt sammen til oversiktsark. `AILIEN_SHOTS=/sti`. |
+
+Testene er skrevet for å feile høyt. I Godot 3 avbryter en skriptfeil bare
+funksjonen den skjer i, og den som kalte fortsetter med `null`. Derfor
+returnerer hver delsjekk `true` til slutt, "ikke true" teller som feil, spillets
+skript lastes med `load()` + `can_instance()` i stedet for `preload`, og en
+vaktbikkje avslutter med kode 1 hvis testen stopper opp. Uten dette kunne en
+parsefeil i et mønster gi "OK" eller en Godot-prosess som aldri avslutter.
+Ett hull gjenstår og kan ikke tettes innenfra: har *testskriptet selv* en
+parsefeil, får noden ikke noe skript, og Godot blir stående. Kjør derfor
+testene med tidsavbrudd i skript og CI (`timeout 600 Godot ...`).
 
 `AILIEN_WAVES_JSON=/sti/waves.json` får `check_patterns` og `sim_waves` til
 å bruke bølgerader fra en JSON-fil i stedet for `waves.gd`, så man kan prøve

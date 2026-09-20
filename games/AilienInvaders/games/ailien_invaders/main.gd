@@ -163,6 +163,7 @@ func _set_state(next: int) -> void:
 			bullets.clear()
 		State.VICTORY:
 			player.controllable = false
+			player.visible = true  # kan ha frosset midt i et usårbarhets-blink
 			_save_score()
 			_show_message("DU VANT!\nPoeng: %d   Rekord: %d\nSTART = nytt spill"
 					% [score, Arcade.get_best_score(GAME_ID)])
@@ -236,6 +237,8 @@ func _on_entry_finished() -> void:
 
 
 func _on_enemy_killed(points: int) -> void:
+	if state == State.GAME_OVER or state == State.VICTORY:
+		return  # poengsummen er alt lagret
 	score += points
 	score_label.text = "POENG: %d" % score
 

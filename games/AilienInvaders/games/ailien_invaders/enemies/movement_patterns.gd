@@ -61,6 +61,7 @@ const SAG_COMPENSATION := 0.75
 
 const FIGURE8_BOB := 18.0     # høyden på åttetallet (± px)
 const FIGURE8_RATE := 0.8     # rad/s gjennom åttetallet ved tempo 1
+const SINE_MAX_SPEED := 150.0    # px/s sideveis for sine
 const FIGURE8_MAX_SPEED := 220.0 # px/s sideveis på det raskeste (spilleren klarer 220)
 const ROCK_MAX_ANGLE := 0.314 # ca. 18°
 const ROCK_SWAY := 16.0
@@ -200,9 +201,10 @@ static func _classic(state: Dictionary, delta: float, pace: float, ctx: Dictiona
 # Svaier i sinus og siger sakte nedover mens den dupper.
 static func _sine(state: Dictionary, delta: float, pace: float, ctx: Dictionary) -> void:
 	state["y"] += state["descent"] * pace * delta
-	# Egen fase med fartstak, som figure8: formasjonen skal aldri gå fortere
-	# sideveis enn spilleren (220 px/s), ellers blir den umulig å treffe.
-	var rate: float = min(0.9 * ctx["speed_mult"] * pace, FIGURE8_MAX_SPEED / max(1.0, state["amp"]))
+	# Egen fase med fartstak. Hele formasjonen feier sidelengs, så taket ligger
+	# godt under spillerens 220 px/s: ved 220 måtte man løpe for fullt bare
+	# for å holde følge, og de siste fiendene ble nesten umulige å treffe.
+	var rate: float = min(0.9 * ctx["speed_mult"] * pace, SINE_MAX_SPEED / max(1.0, state["amp"]))
 	state["phase"] = state.get("phase", 0.0) + rate * delta
 	var phase: float = state["phase"]
 	state["offset"] = Vector2(

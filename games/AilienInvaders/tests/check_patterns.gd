@@ -11,28 +11,41 @@ extends Node
 # én mønsterfil ikke velter testen for de andre. "waves" laster alt og sjekker
 # hver kombinasjon bølgene faktisk kan trekke.
 # Avslutter med kode 0 (OK) eller 1 (feil).
+#
+# NB om Godot 3: en skriptfeil avbryter bare funksjonen den skjer i, og den
+# som kalte får null tilbake og fortsetter. Derfor returnerer hver sjekk true
+# til slutt, og den som kaller regner "ikke true" som feil. Slik kan testen
+# aldri melde OK fordi en sjekk krasjet halvveis. En vaktbikkje avslutter med
+# kode 1 hvis selve _ready skulle bli avbrutt.
 
 const AREA := Vector2(640, 360)
 const DT := 1.0 / 60.0
 const COUNTS := [8, 12, 16, 20, 24, 28, 32, 36, 40]
 const BASE := "res://games/ailien_invaders/"
 
+const WATCHDOG_FRAMES := 120  # _ready er synkron; kommer vi hit har den krasjet
+
 var failures := 0
 var checks := 0
+var frames := 0
 
 
 func _ready() -> void:
 	var mode := OS.get_environment("AILIEN_CHECK")
 	if mode == "":
 		mode = "all"
-	if mode in ["formations", "all"]:
-		_check_formations()
-	if mode in ["entries", "all"]:
-		_check_entries()
-	if mode in ["movements", "all"]:
-		_check_movements()
-	if mode in ["waves", "all"]:
-		_check_waves()
+	if not (mode in ["formations", "entries", "movements", "waves", "all"]):
+		_fail("ukjent AILIEN_CHECK '%s'" % mode)
+	if mode in ["formations", "all"] and not _check_formations():
+		_fail("formations: sjekken ble avbrutt av en skriptfeil")
+	if mode in ["entries", "all"] and not _check_entries():
+		_fail("entries: sjekken ble avbrutt av en skriptfeil")
+	if mode in ["movements", "all"] and not _check_movements():
+		_fail("movements: sjekken ble avbrutt av en skriptfeil")
+	if mode in ["waves", "all"] and not _check_waves():
+		_fail("waves: sjekken ble avbrutt av en skriptfeil")
+	if checks == 0:
+		_fail("ingen sjekker ble kjørt")
 	if failures == 0:
 		print("OK: %d sjekker (%s)" % [checks, mode])
 		get_tree().quit(0)
@@ -41,25 +54,43 @@ func _ready() -> void:
 		get_tree().quit(1)
 
 
+func _process(_delta: float) -> void:
+	frames += 1
+	if frames > WATCHDOG_FRAMES:
+		print("FEIL: testen ble avbrutt av en skriptfeil før den rakk å avslutte")
+		get_tree().quit(1)
+
+
+# Laster et skript og sjekker at det faktisk kompilerte. load() gir et
+# objekt også for et skript med parsefeil, så null-sjekk er ikke nok.
+func _load_script(path: String):
+	var script = load(BASE + path)
+	if script == null or not (script is Script) or not script.can_instance():
+		_fail("%s lar seg ikke laste/kompilere" % path)
+		return null
+	return script
+
+
 # ---------------------------------------------------------------------------
 # Formasjoner
 # ---------------------------------------------------------------------------
 
-func _check_formations() -> void:
-	var F = load(BASE + "enemies/formations.gd")
+func _check_formations() -> bool:
+	var F = _load_script("enemies/formations.gd")
 	if F == null:
-		_fail("formations.gd lar seg ikke laste")
-		return
+		return true
 	for name in F.NAMES:
 		for n in COUNTS:
-			_check_formation(F, name, n)
+			if not _check_formation(F, name, n):
+				_fail("formasjon %s n=%d: sjekken ble avbrutt av en skriptfeil" % [name, n])
+	return true
 
 
-func _check_formation(F, name: String, n: int) -> void:
+func _check_formation(F, name: String, n: int) -> bool:
 	var tag := "formasjon %s n=%d" % [name, n]
 	var slots: Array = F.build(name, n, AREA)
 	if not _ok(slots.size() == n, "%s: %d plasser (fikk %d)" % [tag, n, slots.size()]):
-		return
+		return true
 	var sum_x := 0.0
 	var sorted := true
 	var in_bounds := true
@@ -82,29 +113,31 @@ func _check_formation(F, name: String, n: int) -> void:
 		for j in range(i + 1, n):
 			min_d = min(min_d, slots[i].distance_to(slots[j]))
 	_ok(min_d >= F.MIN_SPACING - 0.01, "%s: minst %d px mellom plasser (fikk %.1f)" % [tag, F.MIN_SPACING, min_d])
+	return true
 
 
 # ---------------------------------------------------------------------------
 # Innflyging
 # ---------------------------------------------------------------------------
 
-func _check_entries() -> void:
-	var E = load(BASE + "enemies/entry_patterns.gd")
+func _check_entries() -> bool:
+	var E = _load_script("enemies/entry_patterns.gd")
 	if E == null:
-		_fail("entry_patterns.gd lar seg ikke laste")
-		return
+		return true
 	for name in E.NAMES:
 		for shape in _synthetic_shapes():
-			_check_entry(E, name, shape["name"], shape["slots"])
+			if not _check_entry(E, name, shape["name"], shape["slots"]):
+				_fail("innflyging %s på %s: sjekken ble avbrutt av en skriptfeil" % [name, shape["name"]])
+	return true
 
 
-func _check_entry(E, name: String, shape: String, slots: Array) -> void:
+func _check_entry(E, name: String, shape: String, slots: Array) -> bool:
 	var tag := "innflyging %s på %s" % [name, shape]
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77
 	var entries: Array = E.build(name, slots, AREA, rng)
 	if not _ok(entries.size() == slots.size(), "%s: én bane per plass (%d/%d)" % [tag, entries.size(), slots.size()]):
-		return
+		return true
 	rng.seed = 77
 	var again: Array = E.build(name, slots, AREA, rng)
 	_ok(str(entries) == str(again), "%s: samme seed gir samme baner" % tag)
@@ -136,28 +169,30 @@ func _check_entry(E, name: String, shape: String, slots: Array) -> void:
 	_ok(path_ok, "%s: banen innenfor x∈[-80,720] y∈[-80,%d] (%s)" % [tag, E.PATH_MAX_Y, worst])
 	var total: float = E.total_time(entries)
 	_ok(total <= E.MAX_TOTAL_TIME, "%s: varer %.2f s (maks %.1f)" % [tag, total, E.MAX_TOTAL_TIME])
+	return true
 
 
 # ---------------------------------------------------------------------------
 # Bevegelse
 # ---------------------------------------------------------------------------
 
-func _check_movements() -> void:
-	var M = load(BASE + "enemies/movement_patterns.gd")
+func _check_movements() -> bool:
+	var M = _load_script("enemies/movement_patterns.gd")
 	if M == null:
-		_fail("movement_patterns.gd lar seg ikke laste")
-		return
+		return true
 	for name in M.NAMES:
 		for shape in _synthetic_shapes():
 			for descent_time in [60.0, 100.0]:
 				for speed_mult in [1.0, 1.6]:
-					_check_movement(M, name, shape["name"], shape["slots"], descent_time, speed_mult,
-							"bevegelse %s på %s (ned %ds, fart %.1f)" % [name, shape["name"], int(descent_time), speed_mult])
+					var tag := "bevegelse %s på %s (ned %ds, fart %.1f)" % [name, shape["name"], int(descent_time), speed_mult]
+					if not _check_movement(M, name, shape["name"], shape["slots"], descent_time, speed_mult, tag):
+						_fail("%s: sjekken ble avbrutt av en skriptfeil" % tag)
+	return true
 
 
 # Simulerer mønsteret med alle i live til noen når bunnen, og en gang til
 # med 90 % døde. Returnerer false hvis noe feilet.
-func _check_movement(M, name: String, shape: String, slots: Array, descent_time: float, speed_mult: float, tag: String) -> void:
+func _check_movement(M, name: String, shape: String, slots: Array, descent_time: float, speed_mult: float, tag: String) -> bool:
 	var min_x := AREA.x
 	var max_x := 0.0
 	for s in slots:
@@ -185,6 +220,27 @@ func _check_movement(M, name: String, shape: String, slots: Array, descent_time:
 	_ok(res2["bounds_ok"], "%s: innenfor skjermen også med 90 %% døde (%s)" % [tag, res2["worst"]])
 	_ok(res2["time"] <= t + 0.5 and res2["time"] >= 0.2 * descent_time,
 			"%s: 90 %% døde går fortere, men ikke vilt (%.1f s mot %.1f s)" % [tag, res2["time"], t])
+
+	# Kantene kan flytte seg mens bølgen pågår (kolonner dør, dykkere er ute).
+	# Snevrer vi inn min_x/max_x underveis, skal ingenting hoppe eller forsvinne.
+	var state3: Dictionary = M.start(name, AREA, slots, descent_time)
+	var ctx3 := {"dead_frac": 0.5, "speed_mult": speed_mult, "min_x": min_x, "max_x": max_x}
+	var mid := (min_x + max_x) / 2
+	var prev := []
+	for s in slots:
+		prev.append(s)
+	var worst_step := 0.0
+	for frame in 1800:
+		var squeeze: float = min(1.0, frame / 1500.0)
+		ctx3["min_x"] = lerp(min_x, mid, squeeze)
+		ctx3["max_x"] = lerp(max_x, mid, squeeze)
+		M.step(state3, DT, ctx3)
+		for i in slots.size():
+			var p: Vector2 = M.place(state3, slots[i])
+			worst_step = max(worst_step, p.distance_to(prev[i]))
+			prev[i] = p
+	_ok(worst_step <= M.MAX_STEP, "%s: ingen hopp når kantene flytter seg (største steg %.1f px)" % [tag, worst_step])
+	return true
 
 
 func _simulate(M, state: Dictionary, slots: Array, ctx: Dictionary, max_time: float) -> Dictionary:
@@ -217,24 +273,26 @@ func _simulate(M, state: Dictionary, slots: Array, ctx: Dictionary, max_time: fl
 # holder kontraktene med ekte formasjoner og bølgens egne tall.
 # ---------------------------------------------------------------------------
 
-func _check_waves() -> void:
-	var F = load(BASE + "enemies/formations.gd")
-	var E = load(BASE + "enemies/entry_patterns.gd")
-	var M = load(BASE + "enemies/movement_patterns.gd")
-	var W = load(BASE + "waves/waves.gd")
-	var T = load(BASE + "enemies/enemy_types.gd")
+func _check_waves() -> bool:
+	var F = _load_script("enemies/formations.gd")
+	var E = _load_script("enemies/entry_patterns.gd")
+	var M = _load_script("enemies/movement_patterns.gd")
+	var W = _load_script("waves/waves.gd")
+	var T = _load_script("enemies/enemy_types.gd")
 	if F == null or E == null or M == null or W == null or T == null:
-		_fail("en av skriptfilene lar seg ikke laste")
-		return
+		return true
 	var rows := []
 	if OS.get_environment("AILIEN_WAVES_JSON") != "":
 		rows = W.rows_from_json(OS.get_environment("AILIEN_WAVES_JSON"))
 		if not _ok(not rows.empty(), "AILIEN_WAVES_JSON lar seg lese"):
-			return
+			return true
 	var wave_total: int = W.count() if rows.empty() else rows.size()
 	for n in range(1, wave_total + 1):
 		var data: Dictionary = W.get_wave(n) if rows.empty() else W.with_defaults(rows[n - 1], n)
 		var tag := "bølge %d" % n
+		if not _ok(data.has("enemies") and typeof(data["enemies"]) == TYPE_ARRAY and not data["enemies"].empty(),
+				"%s: har 'enemies'" % tag):
+			continue
 		var count: int = W.enemy_count(data)
 		_ok(count >= 8 and count <= 40, "%s: %d fiender (8–40, Pi-grensa)" % [tag, count])
 		for pair in data["enemies"]:
@@ -250,15 +308,19 @@ func _check_waves() -> void:
 		for f in data["formations"]:
 			if not _ok(f in F.NAMES, "%s: formasjon '%s' finnes" % [tag, f]):
 				continue
-			_check_formation(F, f, count)
+			if not _check_formation(F, f, count):
+				_fail("%s: formasjon %s ble avbrutt av en skriptfeil" % [tag, f])
 			var slots: Array = F.build(f, count, AREA)
 			for en in data["entries"]:
 				if _ok(en in E.NAMES, "%s: innflyging '%s' finnes" % [tag, en]):
-					_check_entry(E, en, "%s/%s" % [tag, f], slots)
+					if not _check_entry(E, en, "%s/%s" % [tag, f], slots):
+						_fail("%s: innflyging %s ble avbrutt av en skriptfeil" % [tag, en])
 			for m in data["movements"]:
 				if _ok(m in M.NAMES, "%s: bevegelse '%s' finnes" % [tag, m]):
-					_check_movement(M, m, f, slots, data["descent_time"], data["speed_mult"],
-							"%s: %s + %s" % [tag, f, m])
+					if not _check_movement(M, m, f, slots, data["descent_time"], data["speed_mult"],
+							"%s: %s + %s" % [tag, f, m]):
+						_fail("%s: bevegelse %s ble avbrutt av en skriptfeil" % [tag, m])
+	return true
 
 
 # ---------------------------------------------------------------------------

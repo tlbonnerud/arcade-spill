@@ -141,19 +141,30 @@ rettferdighet) og stilt inn mot bot-simulatoren i `tests/sim_waves.tscn`.
 | 7 | SLANGEN | 8 skytter + 16 soldat + 16 grunt | søyler | slange | åttetall | Maks antall (40, Pi-testen). Skyt skytterne bakerst gjennom banene mellom søylene. |
 | 8 | DØDSHJULET | 7 elite + 17 skytter | ring | spiral, løkke | bane (karusell) | Få, men alle farlige: alle sikter, ingen kanonføde, målene går i ring. |
 | 9 | ALT VI HAR | 4 elite + 4 skytter + 16 soldat + 16 grunt | X | kryss, stup | vugge, splitt | Alle fire typer samtidig, størst variasjon fra run til run. **+1 liv.** |
-| 10 | SISTE BØLGE | 8 elite + 4 skytter + 12 soldat + 16 grunt | rader | slange, regn | klassisk | Finalen: tilbake til start, men 5 × 8, to dykkere samtidig og de raskeste kulene. |
+| 10 | SISTE BØLGE | 8 elite + 4 skytter + 12 soldat + 16 grunt | rader | slange, regn | klassisk | Finalen: tilbake til start, men 5 × 8, raskest marsj, raskest kuler, og nå dykker skytterne også. |
 
 Hver formasjon (9), innflyging (8) og bevegelse (7) brukes minst én gang.
 
 ### Vanskelighetskurve
 
-Målt med boten "good" (øvet arkadespiller), hver bølge for seg med tre liv:
-tapte liv per bølge stiger jevnt fra ca. 0,05 til ca. 1,1, med en bevisst
-dupp i bølge 6. Summen er ca. 5 liv, mot 3 liv + 3 bonusliv. En god spiller
-vinner omtrent fire av ti forsøk, et fullt run tar 6,5–7 minutter, og en
-uøvet spiller ("average") kommer typisk til bølge 5–6. Formasjonen når
-aldri bunnen for en god spiller: `descent_time` er tidspress, ikke det som
-tar livet av deg.
+Målt med boten "good" (øvet arkadespiller), hver bølge for seg med tre liv,
+96 forsøk per bølge:
+
+| Bølge | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Tapte liv | 0,08 | 0,12 | 0,15 | 0,24 | 0,57 | 0,39 | 0,64 | 0,70 | 0,81 | 1,18 |
+| Sekunder | 17 | 29 | 20 | 35 | 25 | 48 | 60 | 30 | 41 | 73 |
+
+Jevnt stigende med en bevisst dupp i bølge 6. Summen er ca. 4,9 liv, mot 3 liv
++ 3 bonusliv. På hele spillet vinner den gode boten 38 % av forsøkene på
+6,5 minutter, og den uøvede ("average") når typisk bølge 6 og vinner nesten
+aldri. Formasjonen når aldri bunnen for noen av dem: `descent_time` er
+tidspress, ikke det som tar livet av deg.
+
+Ta tallene som en rettesnor, ikke en fasit. Boten jukser ett sted (den leser
+dykkets mål rett fra spillet, der et menneske må lese banen), så dykk er
+trolig litt farligere for folk enn tallene sier. Ekte spillere på Pi-en er
+den endelige testen.
 
 Det designpanelet lærte om knappene (verdt å huske når oppgraderingene kommer):
 

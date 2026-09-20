@@ -13,11 +13,9 @@ extends Node
 # AILIEN_SHOTS_MODE=waves tar i stedet to bilder per bølge i waves.gd:
 # banneret under innflygingen, og formasjonen i bevegelse.
 
-const MainScene := preload("res://games/ailien_invaders/main.tscn")
-const Formations := preload("res://games/ailien_invaders/enemies/formations.gd")
-const Entries := preload("res://games/ailien_invaders/enemies/entry_patterns.gd")
-const Movements := preload("res://games/ailien_invaders/enemies/movement_patterns.gd")
-const Waves := preload("res://games/ailien_invaders/waves/waves.gd")
+# load() i _ready, ikke preload (se tests/play_waves.gd).
+const BASE := "res://games/ailien_invaders/"
+const STALL_FRAMES := 600
 
 const DT := 1.0 / 60.0
 const MIX := [["elite", 4], ["skytter", 8], ["soldat", 12]]
@@ -28,8 +26,14 @@ const MOVEMENT_FORMATION := {
 	"figure8": "v_shape", "sine": "checkerboard", "classic": "rows",
 }
 
+var Formations
+var Entries
+var Movements
+var Waves
 var main: Node2D
 var out_dir := ""
+var save_errors := 0
+var stalled_frames := 0
 
 
 func _ready() -> void:
@@ -37,10 +41,41 @@ func _ready() -> void:
 	if out_dir == "":
 		out_dir = "user://shots"
 	Directory.new().make_dir_recursive(out_dir)
-	main = MainScene.instance()
+	Formations = load(BASE + "enemies/formations.gd")
+	Entries = load(BASE + "enemies/entry_patterns.gd")
+	Movements = load(BASE + "enemies/movement_patterns.gd")
+	Waves = load(BASE + "waves/waves.gd")
+	var scene = load(BASE + "main.tscn")
+	for script in [Formations, Entries, Movements, Waves]:
+		if script == null or not script.can_instance():
+			_abort("et av spillets skript lar seg ikke laste")
+			return
+	main = scene.instance()
 	add_child(main)
+	if main.get_script() == null or not main.has_method("wave_count"):
+		_abort("main.gd kompilerte ikke")
+		return
 	main.save_scores = false
 	call_deferred("_run")
+
+
+func _process(_delta: float) -> void:
+	stalled_frames += 1
+	if stalled_frames > STALL_FRAMES:
+		_abort("stoppet opp (skriptfeil?)")
+
+
+func _abort(why: String) -> void:
+	print("FEIL: ", why)
+	get_tree().quit(1)
+
+
+func _finish() -> void:
+	if save_errors > 0:
+		_abort("%d bilder lot seg ikke lagre i %s" % [save_errors, out_dir])
+		return
+	print("OK: skjermbilder i ", ProjectSettings.globalize_path(out_dir))
+	get_tree().quit(0)
 
 
 func _run() -> void:
@@ -48,8 +83,7 @@ func _run() -> void:
 	main.set_process(false)  # vi stepper selv
 	if OS.get_environment("AILIEN_SHOTS_MODE") == "waves":
 		yield(_shoot_waves(), "completed")
-		print("OK: skjermbilder i ", ProjectSettings.globalize_path(out_dir))
-		get_tree().quit(0)
+		_finish()
 		return
 	main.msg_label.visible = false
 
@@ -77,8 +111,7 @@ func _run() -> void:
 			_advance(3.0, false)
 			yield(_shoot("bevegelse_%s_%d" % [m, k + 1]), "completed")
 
-	print("OK: skjermbilder i ", ProjectSettings.globalize_path(out_dir))
-	get_tree().quit(0)
+	_finish()
 
 
 # To bilder per bølge, slik spilleren ser dem (banner og HUD som i spillet).
@@ -130,5 +163,7 @@ func _shoot(name: String) -> void:
 	var img: Image = get_viewport().get_texture().get_data()
 	img.flip_y()
 	var err := img.save_png("%s/%s.png" % [out_dir, name])
+	stalled_frames = 0
 	if err != OK:
+		save_errors += 1
 		print("  FEIL ", name, " -> ", err)
