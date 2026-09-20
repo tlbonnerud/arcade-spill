@@ -131,7 +131,6 @@ func _play_wave(n: int, seed_value: int) -> Dictionary:
 	main.rng.seed = seed_value
 	main._start_wave(n)
 	_reset_bot(seed_value)
-	var lives_start: int = main.player.lives
 	var t := 0.0
 	while t < WAVE_TIMEOUT and (main.state == main.State.WAVE_INTRO or main.state == main.State.WAVE):
 		_tick()
@@ -141,7 +140,8 @@ func _play_wave(n: int, seed_value: int) -> Dictionary:
 	return {
 		"cleared": cleared,
 		"time": t,
-		"lives_lost": lives_start - main.player.lives,
+		# Treff, ikke netto liv: et bonusliv ved klarering skal ikke skjule tapene.
+		"lives_lost": hits_by_bullet + hits_by_diver,
 		"bottom": hit_bottom,
 		"died": main.state == main.State.GAME_OVER and not hit_bottom,
 		"timeout": t >= WAVE_TIMEOUT,

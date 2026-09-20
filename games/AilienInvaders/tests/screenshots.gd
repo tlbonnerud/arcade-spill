@@ -10,6 +10,8 @@ extends Node
 #   python3 tests/contact_sheets.py /tmp/shots      (setter bildene sammen til oversiktsark)
 #
 # Bildene havner i mappa gitt av AILIEN_SHOTS (standard user://shots/).
+# AILIEN_SHOTS_MODE=waves tar i stedet to bilder per bølge i waves.gd:
+# banneret under innflygingen, og formasjonen i bevegelse.
 
 const MainScene := preload("res://games/ailien_invaders/main.tscn")
 const Formations := preload("res://games/ailien_invaders/enemies/formations.gd")
@@ -44,6 +46,11 @@ func _ready() -> void:
 func _run() -> void:
 	yield(get_tree(), "idle_frame")
 	main.set_process(false)  # vi stepper selv
+	if OS.get_environment("AILIEN_SHOTS_MODE") == "waves":
+		yield(_shoot_waves(), "completed")
+		print("OK: skjermbilder i ", ProjectSettings.globalize_path(out_dir))
+		get_tree().quit(0)
+		return
 	main.msg_label.visible = false
 
 	for f in Formations.NAMES:
@@ -72,6 +79,24 @@ func _run() -> void:
 
 	print("OK: skjermbilder i ", ProjectSettings.globalize_path(out_dir))
 	get_tree().quit(0)
+
+
+# To bilder per bølge, slik spilleren ser dem (banner og HUD som i spillet).
+func _shoot_waves() -> void:
+	for n in range(1, main.wave_count() + 1):
+		main.rng.seed = 7
+		main._start_wave(n)
+		main.player.invuln = 999.0
+		for _k in 54:
+			main._process(DT)
+		yield(_shoot("bolge_%02d_a_innflyging" % n), "completed")
+		var t := 0.0
+		while main.swarm.is_entering() and t < 8.0:
+			main._process(DT)
+			t += DT
+		for _k in 300:
+			main._process(DT)
+		yield(_shoot("bolge_%02d_b_kamp" % n), "completed")
 
 
 func _spawn(mix: Array, formation: String, entry: String, movement: String) -> void:

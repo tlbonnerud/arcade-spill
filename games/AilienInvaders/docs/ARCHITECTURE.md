@@ -22,14 +22,17 @@ games/ailien_invaders/
 │   └── player_stats.gd     ⬜ Basisstats + oppgraderingsmodifikatorer
 ├── enemies/
 │   ├── enemy_types.gd      ✅ Tabell: grunt/soldat/skytter/elite (hp, poeng, kule, sikting)
-│   ├── formations.gd       ✅ rows, v_shape, ring, checkerboard → liste med plasser
-│   ├── entry_patterns.gd   ✅ Innflyging: from_top, from_sides, spiral, swoop
-│   ├── movement_patterns.gd✅ classic, sine (dykk ligger i wave_manager)
+│   ├── formations.gd       ✅ 9 formasjoner: rows, v_shape, ring, checkerboard,
+│   │                          two_groups, diamond, arrow, columns, x_shape
+│   ├── entry_patterns.gd   ✅ 8 innflyginger: from_top, from_sides, spiral, swoop,
+│   │                          rain, crossover, loop, snake
+│   ├── movement_patterns.gd✅ 7 bevegelser: classic, sine, figure8, split, rock,
+│   │                          orbit, pulse (dykk ligger i wave_manager)
 │   └── boss/
 │       ├── boss.gd         ⬜ Bossen med faser
 │       └── boss.tscn       ⬜ (scene, fordi bossen bør kunne pusses på i editoren)
 ├── waves/
-│   └── waves.gd            ✅ Bølgene som data (3 av 10 så langt, se format under)
+│   └── waves.gd            ✅ De 10 bølgene som data (se format under)
 ├── upgrades/
 │   ├── upgrades.gd         ⬜ Katalog: id, navn, sjeldenhet, apply()
 │   └── upgrade_screen.gd   ⬜ "Velg 1 av 3"-skjermen
@@ -39,8 +42,11 @@ games/ailien_invaders/
 ├── sprites/                Grafikk
 ├── docs/                   Disse dokumentene (eksporteres ikke til .pck)
 └── tests/                  Automatiske tester (ekskludert fra .pck)
-    ├── play_waves.tscn/.gd Spiller gjennom alle bølgene uten skjerm
-    └── screenshots.tscn/.gd Tar bilder av hver formasjon og innflyging
+    ├── play_waves.tscn/.gd     Spiller gjennom alle bølgene uten skjerm
+    ├── check_patterns.tscn/.gd Kontrakter for mønstre og bølgedata
+    ├── sim_waves.tscn/.gd      Bot som måler hvor vanskelige bølgene er
+    ├── screenshots.tscn/.gd    Tar bilder av hvert mønster
+    └── contact_sheets.py       Setter bildene sammen til oversiktsark
 ```
 
 (`tests/` ligger i prosjektrota, ikke under `games/ailien_invaders/`, så den
@@ -126,14 +132,41 @@ Kommer: INTRO, UPGRADE, BOSS_INTRO, BOSS (se DESIGN.md).
    kontrollpunkt til plassen sin, med forsinkelse per fiende. Regnes ut per
    frame i `_step_entry()`, ingen tweens (billigere på Pi-en, og testbart
    uten skjerm). Fiender kan treffes underveis, men skyter ikke.
-3. Bevegelse: `movement_patterns.gd` eier en tilstand og returnerer
-   formasjonens *offset* hver frame; fiendens posisjon er `slot + offset`.
-   Alt går fortere jo flere som er døde (`dead_frac`).
-4. Dykk: hvis bølgen har `dives`, forlater én fiende med `can_dive` plassen
-   sin hvert `dive_interval` sekund, stuper i en bue mot spilleren, skyter i
-   bunnen og flyr tilbake til `slot + offset` (som kan ha flyttet seg).
+3. Bevegelse: `movement_patterns.gd` eier en tilstand. `step()` flytter
+   tiden fram én gang per frame, og `place(state, slot)` sier hvor hver
+   enkelt plass er akkurat nå. Fordi posisjonen regnes ut per fiende kan et
+   mønster rotere formasjonen (rock, orbit), dele den i to (split) eller la
+   den puste (pulse), ikke bare skyve den. `place()` allokerer ingenting:
+   alt tungt (sin/cos, trygge utslag) regnes ut i `start()`/`step()`.
+   Nedstigningen styres av bølgens `descent_time`, uavhengig av formasjonens
+   bredde, og alt går fortere jo flere som er døde (`dead_frac`).
+4. Dykk: hvis bølgen har `dives`, forlater en fiende plassen sin hvert
+   `dive_interval` sekund (opptil `max_divers` samtidig, typer fra
+   `dive_types` eller `can_dive`), stuper i en bue mot spilleren, skyter i
+   bunnen og flyr tilbake til plassen sin (som kan ha flyttet seg).
 5. Skyting: vektet trekning (`fire_weight`) blant fiender i formasjonen.
    `aimed` gir retning mot spilleren, ellers rett ned.
+
+Typene i `enemies`-lista fyller formasjonen ovenfra og ned, og innenfor en
+rad fra midten og ut. Da blir fargebåndene speilsymmetriske også når en type
+tar slutt midt i en rad.
+
+## Kontrakter for mønstre
+
+Hver mønsterfil har en `NAMES`-liste og en KONTRAKT-kommentar øverst.
+`tests/check_patterns.tscn` sjekker dem for alle navn:
+
+- **Formasjoner** (8–40 fiender): nøyaktig antall plasser, innenfor
+  skjermen og over `MAX_Y`, minst 28 px mellom plasser, sentrert.
+- **Innflyginger:** starter utenfor skjermen, ender på plassen, flyr aldri
+  gjennom spillerens rad, og hele innflygingen tar maks 4,5 s.
+- **Bevegelser:** sømløs start, aldri utenfor skjermen (mønsteret må dempe
+  seg på brede formasjoner), når bunnen etter ca. `descent_time`, ingen hopp.
+- **Bølgene:** alt de refererer til finnes, og hver kombinasjon poolene kan
+  trekke holder kontraktene over med bølgens egne tall.
+
+Nytt mønster: skriv funksjonen, legg navnet i `NAMES` og `match`-blokken,
+kjør testen. Da vet du at det virker med alle formasjoner og antall.
 
 ## Dataformat: bølger
 
@@ -239,6 +272,20 @@ cd games/AilienInvaders
 ../../tools/Godot3.app/Contents/MacOS/Godot --no-window --path . res://tests/play_waves.tscn
 ```
 
-Avslutter med kode 0 når alt er grønt. `tests/screenshots.tscn` lagrer ett
-bilde per formasjon/innflyging (midt i og på plass) i `AILIEN_SHOTS` eller
-`user://shots/`, for å se at mønstrene ser riktige ut.
+Avslutter med kode 0 når alt er grønt. De andre testene kjøres på samme måte:
+
+| Test | Hva den gjør |
+|---|---|
+| `play_waves.tscn` | Spiller gjennom alle bølgene: antall, typer, innflyging, hp, overganger, bonusliv, VICTORY. |
+| `check_patterns.tscn` | Kontraktene over. `AILIEN_CHECK=formations\|entries\|movements\|waves\|all`. |
+| `sim_waves.tscn` | En bot med menneskelige svakheter (reaksjonstid, begrenset blikk, overser kuler, sikter litt feil) spiller hver bølge mange ganger i hurtigtid og rapporterer klareringsrate, tid, tapte liv (kule/dykker) og verste kombinasjon. Brukes til å stille tallene i `waves.gd`. `AILIEN_SIM_SKILL=average\|good\|perfect`, `AILIEN_SIM_RUNS`, `AILIEN_SIM_WAVES="4-6"`. |
+| `screenshots.tscn` + `contact_sheets.py` | Bilder av hvert mønster, satt sammen til oversiktsark. `AILIEN_SHOTS=/sti`. |
+
+`AILIEN_WAVES_JSON=/sti/waves.json` får `check_patterns` og `sim_waves` til
+å bruke bølgerader fra en JSON-fil i stedet for `waves.gd`, så man kan prøve
+ut nye bølger uten å endre spillet.
+
+Krokene testene bruker i spillet: `main.save_scores = false` (ikke lagre
+highscore), `main.wave_rows` (egne bølgerader), `player.autopilot`
+(`{"dir", "fire"}` i stedet for input; også tenkt til attract-modus) og
+`swarm.spawn_data()` (tving fram bestemte mønstre).

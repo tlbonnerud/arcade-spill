@@ -20,23 +20,29 @@ Ingen nye spillregler, bare struktur som resten bygger på.
 - [x] WAVE_CLEAR: 1,2 s pause, kuler fjernes, bakgrunnen scroller fortere
 - [ ] `core/run_state.gd` tar over poeng/bølge/liv fra main
 - [x] Siste bølge → VICTORY-skjerm (foreløpig uten boss)
+- [x] WAVE_CLEAR viser "+1 LIV" når bølgen gir bonusliv
 
 **Ferdig når:** du kan spille gjennom alle bølgene, se banner mellom hver,
 og få VICTORY etter den siste.
 
-## Steg 2 — Bølgedata og innflyging (delvis ✅)
+## Steg 2 — Bølgedata og innflyging ✅
 
-- [x] `waves/waves.gd` med bølge 1–3 (7 igjen fra DESIGN.md)
-- [x] `enemies/formations.gd`: rows, v_shape, ring, checkerboard
-- [x] `enemies/entry_patterns.gd`: from_top, from_sides, spiral, swoop
-- [x] `enemies/movement_patterns.gd`: classic, sine
+- [x] `waves/waves.gd` med alle 10 bølgene (bølge 10 er en finale til bossen finnes)
+- [x] `enemies/formations.gd`: rows, v_shape, ring, checkerboard, two_groups,
+      diamond, arrow, columns, x_shape
+- [x] `enemies/entry_patterns.gd`: from_top, from_sides, spiral, swoop, rain,
+      crossover, loop, snake
+- [x] `enemies/movement_patterns.gd`: classic, sine, figure8, split, rock,
+      orbit, pulse (posisjon per fiende, nedstigning styrt av `descent_time`)
 - [x] `core/wave_manager.gd` erstatter `swarm.gd`: leser data, velger
-      formasjon/innflyging/bevegelse, spawner, dykk
+      formasjon/innflyging/bevegelse, spawner, flere samtidige dykkere
 - [x] `enemies/enemy_types.gd` med grunt/soldat/skytter/elite, hp-skalering,
       siktede skudd, treff-blink (tatt fra steg 4)
 - [x] Run-seed: RNG i main, vises på game over
-- [ ] Bølge 4–10 (og "two_groups"-formasjonen for bølge 6/7)
-- [x] Automatisk test: `tests/play_waves.tscn`
+- [x] Bonusliv per bølge (`bonus_life`), inntil oppgraderingene finnes
+- [x] Tester: `play_waves` (gjennomspilling), `check_patterns` (kontrakter),
+      `sim_waves` (bot som måler vanskelighet), `screenshots` (oversiktsark)
+- [ ] Prøve alle ti bølgene på Pi-en (bølge 7, 9 og 10 har 40 fiender)
 
 **Ferdig når:** hver bølge ser forskjellig ut, fiendene flyr inn, og to runs
 med samme seed er identiske.
@@ -94,7 +100,9 @@ ganger.
 - [ ] Ytelse: bølge 7 og boss fase 2 holder 60 fps på Pi 3B+
 - [ ] Spilletid 5–8 min for et fullt run
 - [ ] Minst tre "builds" som kan vinne (skudd, forsvar, poeng)
-- [ ] Juster tallene i `waves.gd` og `upgrades.gd`, ikke i koden
+- [ ] Juster tallene i `waves.gd` og `upgrades.gd`, ikke i koden. Bruk
+      `tests/sim_waves.tscn` til å måle før og etter, og still bølgene inn på
+      nytt når oppgraderingene gjør spilleren sterkere (da kan bonuslivene ut).
 
 ## Ikke bestemt ennå
 

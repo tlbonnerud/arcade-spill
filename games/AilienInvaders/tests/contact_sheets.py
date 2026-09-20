@@ -3,7 +3,8 @@
 
     python3 tests/contact_sheets.py /sti/til/shots
 
-Lager formasjoner.png, innflyginger.png og bevegelser.png i samme mappe.
+Lager ark_formasjoner.png, ark_innflyginger.png, ark_bevegelser.png og
+ark_bolger.png (det som finnes bilder til) i samme mappe.
 Krever Pillow (pip install pillow).
 """
 import glob
@@ -40,6 +41,7 @@ def main():
     sheet(sorted(glob.glob(os.path.join(d, "formasjon_*.png"))), 4, os.path.join(d, "ark_formasjoner.png"))
     sheet(sorted(glob.glob(os.path.join(d, "innflyging_*.png"))), 4, os.path.join(d, "ark_innflyginger.png"))
     sheet(sorted(glob.glob(os.path.join(d, "bevegelse_*.png"))), 4, os.path.join(d, "ark_bevegelser.png"))
+    sheet(sorted(glob.glob(os.path.join(d, "bolge_*.png"))), 4, os.path.join(d, "ark_bolger.png"))
 
 
 if __name__ == "__main__":

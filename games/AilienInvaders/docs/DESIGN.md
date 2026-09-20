@@ -10,6 +10,9 @@ Et **run** er 10 bølger. Etter hver bølge velger du **1 av 3 oppgraderinger**.
 Bølge 10 er en **boss**. Dør du, starter du på nytt fra bølge 1 uten
 oppgraderinger (permadeath). Målet er å fullføre runnet med høyest mulig poeng.
 
+Status: de 10 bølgene finnes, oppgraderinger og boss gjenstår. Inntil videre
+gir bølge 3, 6 og 9 et bonusliv (maks 5 liv).
+
 Arkade-rammer som styrer alt:
 
 - Et run skal ta **5–8 minutter**. Folk står i kø bak maskinen.
@@ -121,20 +124,51 @@ Skalering per bølge: hver bølge har `hp_mult` (hp × dette, avrundet til
 nærmeste, minst 1), `fire_rate_mult`, `speed_mult` og `bullet_speed_mult`.
 Tallene bor i `waves/waves.gd`, ikke spredt rundt i koden.
 
-## Bølgetabell (v1)
+## Bølgetabell (v2, slik den ligger i `waves/waves.gd`)
 
-| Bølge | Fiender | Formasjon (pool) | Bevegelse (pool) | Nytt denne bølgen |
-|---|---|---|---|---|
-| 1 | 16 grunt | 2 rader | klassisk | Opplæring: som i dag, men færre. |
-| 2 | 24 grunt/soldat | 3 rader, V-form | klassisk | Soldater skyter mer. |
-| 3 | 24 + 8 skytter | 4 rader | klassisk, sinus | Siktede skudd. |
-| 4 | 32 blandet | grid, sjakkbrett | sinus | Første "store" bølge. |
-| 5 | 8 elite + 16 grunt | ring, V-form | klassisk + dykk | Dykkere. Elite-bølge, føles som miniboss. |
-| 6 | 32 blandet | grid, to grupper | sinus, dykk | To grupper med hver sin retning. |
-| 7 | 40 blandet | sjakkbrett, to grupper | alle | Maks antall. Ytelsestest på Pi. |
-| 8 | 24 skytter/elite | ring | dykk, sinus | Færre, men alle er farlige. |
-| 9 | 40 blandet | alle | alle | "Alt vi har". |
-| 10 | Boss (+ grunts i fase 2) | — | boss-mønster | Bossen. |
+Bossen og oppgraderingene finnes ikke ennå, så bølge 10 er en finale med
+vanlige fiender. Tabellen er laget av et designpanel (tempo, spektakkel,
+rettferdighet) og stilt inn mot bot-simulatoren i `tests/sim_waves.tscn`.
+
+| Bølge | Banner | Fiender | Formasjon | Innflyging (pool) | Bevegelse (pool) | Nytt denne bølgen |
+|---|---|---|---|---|---|---|
+| 1 | BØLGE 1 | 16 grunt | rader | ovenfra | klassisk | Opplæring: flytt, skyt, én kule om gangen. |
+| 2 | SOLDATER | 12 soldat + 15 grunt | V-form (tre hele vinkler) | fra sidene | sinus | Soldater skyter ofte, og formasjonen svaier i stedet for å marsjere. |
+| 3 | DE SIKTER! | 9 skytter + 15 grunt | diamant | løkke, spiral | puls | Første siktede skudd og første show-innflyging. **+1 liv.** |
+| 4 | PORTEN | 8 skytter + 8 soldat + 16 grunt | to grupper | kryss, fra sidene | splitt | Første store bølge: to dører som åpner og lukker seg. |
+| 5 | HAIENE | 16 grunt + 8 elite | pil mot spilleren | stup | vugge | Miniboss-følelse: haiene sitter i pilspissen og dykker. Rolige kuler, dykkene er hele historien. |
+| 6 | KULEREGN | 13 soldat + 19 grunt | sjakkbrett | regn | puls | Pustepause med vri: flest kuler i hele spillet, men ingenting sikter eller dykker. **+1 liv.** |
+| 7 | SLANGEN | 8 skytter + 16 soldat + 16 grunt | søyler | slange | åttetall | Maks antall (40, Pi-testen). Skyt skytterne bakerst gjennom banene mellom søylene. |
+| 8 | DØDSHJULET | 7 elite + 17 skytter | ring | spiral, løkke | bane (karusell) | Få, men alle farlige: alle sikter, ingen kanonføde, målene går i ring. |
+| 9 | ALT VI HAR | 4 elite + 4 skytter + 16 soldat + 16 grunt | X | kryss, stup | vugge, splitt | Alle fire typer samtidig, størst variasjon fra run til run. **+1 liv.** |
+| 10 | SISTE BØLGE | 8 elite + 4 skytter + 12 soldat + 16 grunt | rader | slange, regn | klassisk | Finalen: tilbake til start, men 5 × 8, to dykkere samtidig og de raskeste kulene. |
+
+Hver formasjon (9), innflyging (8) og bevegelse (7) brukes minst én gang.
+
+### Vanskelighetskurve
+
+Målt med boten "good" (øvet arkadespiller), hver bølge for seg med tre liv:
+tapte liv per bølge stiger jevnt fra ca. 0,05 til ca. 1,1, med en bevisst
+dupp i bølge 6. Summen er ca. 5 liv, mot 3 liv + 3 bonusliv. En god spiller
+vinner omtrent fire av ti forsøk, et fullt run tar 6,5–7 minutter, og en
+uøvet spiller ("average") kommer typisk til bølge 5–6. Formasjonen når
+aldri bunnen for en god spiller: `descent_time` er tidspress, ikke det som
+tar livet av deg.
+
+Det designpanelet lærte om knappene (verdt å huske når oppgraderingene kommer):
+
+- **`speed_mult` (tempo i mønsteret) er den sterkeste knappen for øvede
+  spillere.** Med én kule i lufta betyr et mål i sidebevegelse bom, og hver
+  bom koster ca. 0,8 s.
+- **`fire_rate_mult`, `bullet_speed_mult` og `max_bullets` betyr lite for
+  øvede, men mye for uøvede.** Derfor er de lave i bølge 1–3 og kan være
+  høye sent.
+- **Valg av mønster betyr like mye som tallene.** `pulse` er klart
+  vanskeligst sammen med siktede skudd, `classic` og `split` lettest, og
+  `orbit` på en ring er raskt fordi karusellen bringer fiendene ned til
+  kanonen. Poolene er derfor holdt homogene i vanskelighet.
+- **HP er dyrest** så lenge spilleren har én kule: alle bølger holder seg
+  under ca. 60 hp totalt (`hp_mult` er 1,0 overalt).
 
 ## Fiendeanimasjoner (inn og ut)
 
