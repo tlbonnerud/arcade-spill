@@ -47,21 +47,25 @@ og få VICTORY etter den siste.
 **Ferdig når:** hver bølge ser forskjellig ut, fiendene flyr inn, og to runs
 med samme seed er identiske.
 
-## Steg 3 — Stats og oppgraderinger
+## Steg 3 — Stats og oppgraderinger ✅
 
 Dette er steget som gjør det til et roguelike.
 
-- [ ] `player/player_stats.gd` med base + `recompute()`
-- [ ] Player og bullets leser fra stats i stedet for konstanter
-- [ ] `upgrades/upgrades.gd`: katalog, vektet trekking, stabling
-- [ ] `upgrades/upgrade_screen.gd`: tre kort, venstre/høyre + A, auto-valg 15 s
-- [ ] UPGRADE-tilstand mellom bølgene
-- [ ] Første pulje oppgraderinger: hurtigskudd, store kuler, turbokuler,
-      rakettstøvler, grådighet, ekstra liv, spredningsskudd
-- [ ] HUD viser ikoner/forkortelser for aktive oppgraderinger
+- [x] `player/player_stats.gd` med base + `recompute()`
+- [x] Player og bullets leser fra stats i stedet for konstanter
+- [x] `upgrades/upgrades.gd`: katalog, vektet trekking, stabling
+- [x] `upgrades/upgrade_screen.gd`: tre kort, venstre/høyre + A, auto-valg 15 s
+- [x] UPGRADE-tilstand mellom bølgene
+- [x] Alle 13 oppgraderinger med ikon: spredningsskudd, skarpt skyts,
+      hurtigskudd, gjennomtrenging, målsøking, eksplosjon, store kuler,
+      mer liv, helbredelse, skjolddrikk, pigger, mindre skip, rakettstøvler
+- [x] HUD viser ikoner (med antall) for aktive oppgraderinger
+- [x] `tests/check_upgrades.tscn`, og boten i `sim_waves` velger oppgraderinger
+- [x] Bonuslivene er ute, `hp_mult` skalerer bølge 4–10 som motvekt
+- [ ] Prøve på Pi-en: føles valgene sterke, er kortene lesbare på skjermen?
 
 **Ferdig når:** et run kjennes ulikt fra gang til gang, og spredningsskudd +
-hurtigskudd føles kraftig.
+hurtigskudd føles kraftig. (Boten sier ja; folk får avgjøre.)
 
 ## Steg 4 — Fiendetyper (delvis ✅, det meste kom i steg 2)
 
@@ -69,8 +73,7 @@ hurtigskudd føles kraftig.
 - [x] Skytemønstre: rett ned, siktet
 - [x] Dykk (elite) i wave_manager
 - [x] HP-skalering per bølge, treff-blink på fiender med hp > 1
-- [ ] Resten av oppgraderingene: gjennomtrenging, tungt skyts, skjold,
-      reparasjon, tidsfelt
+- [x] Resten av oppgraderingene (kom i steg 3)
 
 **Ferdig når:** bølge 5 (elite-bølgen) er merkbart annerledes og
 gjennomtrenging har en grunn til å finnes.
@@ -89,7 +92,7 @@ ganger.
 
 ## Steg 6 — Polish
 
-- [ ] Episke oppgraderinger: bombe (B), sidekanoner, laser
+- [ ] Flere episke oppgraderinger: bombe (B), sidekanoner, laser (trenger ikoner)
 - [ ] WAVE_CLEAR-effekt (bakgrunn scroller fortere, skipet hopper)
 - [ ] Lyd: skudd, treff, død, oppgradering, boss
 - [ ] Attract-modus på INTRO (spiller seg selv etter 30 s)
@@ -101,8 +104,9 @@ ganger.
 - [ ] Spilletid 5–8 min for et fullt run
 - [ ] Minst tre "builds" som kan vinne (skudd, forsvar, poeng)
 - [ ] Juster tallene i `waves.gd` og `upgrades.gd`, ikke i koden. Bruk
-      `tests/sim_waves.tscn` til å måle før og etter, og still bølgene inn på
-      nytt når oppgraderingene gjør spilleren sterkere (da kan bonuslivene ut).
+      `tests/sim_waves.tscn` til å måle før og etter (`AILIEN_SIM_PICK`
+      sammenligner med og uten oppgraderinger). Første grovjustering er gjort
+      (hp_mult), finjustering venter på ekte spillere.
 
 ## Ikke bestemt ennå
 

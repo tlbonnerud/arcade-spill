@@ -23,14 +23,17 @@ extends Reference
 #   max_bullets    tak på fiendekuler i lufta samtidig
 #   banner         tekst i WAVE_INTRO (standard "BØLGE N"). Bruk \n for to linjer;
 #                  standardfonten har ikke tankestrek.
-#   bonus_life     true: +1 liv når bølgen er klarert (maks player.MAX_LIVES)
+#   bonus_life     true: +1 liv når bølgen er klarert (opp til maks liv i
+#                  spillerens statblokk). Brukes ikke lenger: oppgraderingene
+#                  tok over, men feltet finnes for egne bølgerader.
 #
 # Ny bølge = ny rad. Nytt mønster = ny funksjon i enemies/, så navnet her.
 #
 # Tallene er stilt inn mot boten i tests/sim_waves.tscn (se waves/README.md og
 # docs/DESIGN.md). Hold poolene homogene: ett vanskelig mønster i en pool gir
 # run som føles urettferdige. Sterkeste knapp for øvede spillere er speed_mult;
-# skuddtakt, kulefart og max_bullets rammer mest de uøvede.
+# skuddtakt, kulefart og max_bullets rammer mest de uøvede. hp_mult er
+# motvekten til oppgraderingene (vifte, skade, hurtigskudd) fra bølge 4 og ut.
 
 const DEFAULTS := {
 	"formations": ["rows"],
@@ -73,7 +76,6 @@ const WAVES := [
 		"entries": ["loop", "spiral"],
 		"movements": ["pulse"],
 		"max_bullets": 3,
-		"bonus_life": true,
 	},
 	{ # Bølge 4 — Porten. Første store bølge: to dører som åpner og lukker seg.
 		"banner": "BØLGE 4\nPORTEN",
@@ -84,6 +86,7 @@ const WAVES := [
 		"fire_rate_mult": 1.4,
 		"speed_mult": 1.0,
 		"bullet_speed_mult": 1.15,
+		"hp_mult": 1.5,
 		"max_bullets": 4,
 	},
 	{ # Bølge 5 — Haiene (miniboss-følelse). Manetene listes først, så haiene havner
@@ -96,6 +99,7 @@ const WAVES := [
 		"dives": true,
 		"dive_interval": 4.5,
 		"max_divers": 1,
+		"hp_mult": 1.5,
 		"max_bullets": 3,
 	},
 	{ # Bølge 6 — Kuleregn. Pustepause med vri: flest kuler i spillet, men ingenting
@@ -107,8 +111,8 @@ const WAVES := [
 		"movements": ["pulse"],
 		"fire_rate_mult": 2.0,
 		"bullet_speed_mult": 1.3,
+		"hp_mult": 2.0,
 		"max_bullets": 6,
-		"bonus_life": true,
 	},
 	{ # Bølge 7 — Slangen. Maks antall (Pi-testen). Skytterne bakerst nås gjennom
 	  # banene mellom søylene.
@@ -120,6 +124,7 @@ const WAVES := [
 		"fire_rate_mult": 1.5,
 		"speed_mult": 1.1,
 		"bullet_speed_mult": 1.15,
+		"hp_mult": 2.0,
 		"max_bullets": 5,
 	},
 	{ # Bølge 8 — Dødshjulet. Få, men alle farlige: alle sikter, og ringen går i karusell.
@@ -133,6 +138,7 @@ const WAVES := [
 		"max_divers": 1,
 		"fire_rate_mult": 1.2,
 		"bullet_speed_mult": 1.15,
+		"hp_mult": 2.5,
 		"max_bullets": 4,
 	},
 	{ # Bølge 9 — Alt vi har. Alle fire typer, størst variasjon fra run til run. Gir bonusliv.
@@ -147,8 +153,8 @@ const WAVES := [
 		"fire_rate_mult": 1.1,
 		"speed_mult": 1.1,
 		"bullet_speed_mult": 1.1,
+		"hp_mult": 2.5,
 		"max_bullets": 4,
-		"bonus_life": true,
 	},
 	{ # Bølge 10 — Siste bølge. Tilbake til start, men 5 × 8: raskest marsj, raskest kuler,
 	  # og skytterne dykker også. (Byttes ut med bossen når den finnes.)
@@ -165,6 +171,7 @@ const WAVES := [
 		"fire_rate_mult": 2.0,
 		"speed_mult": 1.6,
 		"bullet_speed_mult": 1.35,
+		"hp_mult": 3.0,
 		"max_bullets": 6,
 	},
 ]

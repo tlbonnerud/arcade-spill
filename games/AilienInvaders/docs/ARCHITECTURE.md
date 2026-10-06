@@ -14,12 +14,11 @@ games/ailien_invaders/
 │                           eier tilstandsmaskinen. Ingen spillregler her.
 ├── core/                   Ting som ikke er spiller eller fiende
 │   ├── bullets.gd          ✅ Kulelag: flytter, tegner, sjekker treff
-│   ├── run_state.gd        ⬜ Poeng, bølge, valgte oppgraderinger, seed
 │   └── wave_manager.gd     ✅ Leser bølgedata, spawner, kjører innflyging,
 │                              bevegelse, dykk og skyting, sier fra via signaler
 ├── player/
 │   ├── player.gd           ✅ Bevegelse, skyting, treff, usårbarhet
-│   └── player_stats.gd     ⬜ Basisstats + oppgraderingsmodifikatorer
+│   └── player_stats.gd     ✅ Basisstats + tatte oppgraderinger → current
 ├── enemies/
 │   ├── enemy_types.gd      ✅ Tabell: grunt/soldat/skytter/elite (hp, poeng, kule, sikting)
 │   ├── formations.gd       ✅ 9 formasjoner: rows, v_shape, ring, checkerboard,
@@ -34,8 +33,8 @@ games/ailien_invaders/
 ├── waves/
 │   └── waves.gd            ✅ De 10 bølgene som data (se format under)
 ├── upgrades/
-│   ├── upgrades.gd         ⬜ Katalog: id, navn, sjeldenhet, apply()
-│   └── upgrade_screen.gd   ⬜ "Velg 1 av 3"-skjermen
+│   ├── upgrades.gd         ✅ Katalog: id, navn, sjeldenhet, ikon, apply(), offer()
+│   └── upgrade_screen.gd   ✅ "Velg 1 av 3"-skjermen (bygges i kode)
 ├── ui/
 │   ├── hud.gd              ⬜ Poeng, liv, bølge, aktive oppgraderinger
 │   └── transitions.gd      ⬜ Bølgebanner, ADVARSEL, fade, victory
@@ -45,6 +44,7 @@ games/ailien_invaders/
     ├── play_waves.tscn/.gd     Spiller gjennom alle bølgene uten skjerm
     ├── check_patterns.tscn/.gd Kontrakter for mønstre og bølgedata
     ├── sim_waves.tscn/.gd      Bot som måler hvor vanskelige bølgene er
+    ├── check_upgrades.tscn/.gd Katalog, trekking og hver oppgraderings effekt
     ├── screenshots.tscn/.gd    Tar bilder av hvert mønster
     └── contact_sheets.py       Setter bildene sammen til oversiktsark
 ```
@@ -80,11 +80,14 @@ oppgraderingsskjermen, victory-skjermen. Logikk holdes uansett i `.gd`.
 ## Ansvar og signaler (slik det er nå)
 
 ```
-main.gd
+main.gd  (eier stats = player_stats.gd og deler den ut med apply_stats())
  ├── player (player.gd)
  │     fire_requested(pos) ──► bullets.spawn_player_bullet
- │     lives_changed(n)    ──► main → HUD
+ │     lives_changed(n), shield_changed(n) ──► main → HUD
+ │     hit(pos)            ──► main → pigger (bullets.clear_enemy_bullets, swarm.damage_area)
  │     died                ──► main._set_game_over
+ ├── upgrade_screen (upgrades/upgrade_screen.gd)
+ │     chosen(id)          ──► main → stats.take, apply_stats, neste bølge
  ├── swarm (core/wave_manager.gd)
  │     fire_requested(pos, kind, dir) ──► bullets.spawn_enemy_bullet
  │     enemy_killed(pts)   ──► main → poeng
@@ -92,7 +95,8 @@ main.gd
  │     cleared             ──► main → WAVE_CLEAR → neste bølge / VICTORY
  │     reached_bottom      ──► main._set_game_over
  └── bullets (bullets.gd)
-       kaller swarm.try_hit(pos) og player.hit_test(pos)/take_hit()
+       kaller swarm.hit_at(pos, damage, extra, skip) / damage_area / nearest_enemy
+       og player.hit_test(pos)/take_hit()
 ```
 
 Regelen: **delene kjenner ikke hverandre**, bare main gjør det. Player vet
@@ -109,17 +113,19 @@ spiller, sverm, kuler. (Ikke `update()`: det navnet er opptatt av
 ## Tilstandsmaskin i main.gd
 
 ```gdscript
-enum State { WAVE_INTRO, WAVE, WAVE_CLEAR, VICTORY, GAME_OVER }
+enum State { WAVE_INTRO, WAVE, WAVE_CLEAR, UPGRADE, VICTORY, GAME_OVER }
 ```
 
 | Tilstand | Stepper | Går videre når |
 |---|---|---|
 | WAVE_INTRO | spiller, sverm (innflyging, ingen skyting), kuler | `entry_finished` → WAVE, eller `cleared` → WAVE_CLEAR |
 | WAVE | alt, pluss dykker-kontakt | `cleared` → WAVE_CLEAR |
-| WAVE_CLEAR | spiller, kuler; bakgrunnen scroller fortere | 1,2 s → neste bølge, eller VICTORY etter siste |
+| WAVE_CLEAR | spiller, kuler; bakgrunnen scroller fortere | 1,2 s → UPGRADE, eller VICTORY etter siste |
+| UPGRADE | oppgraderingsskjermen (input, autovalg) | `chosen` → neste bølge |
 | VICTORY / GAME_OVER | ingenting (svermen animeres) | START → nytt run |
 
-Kommer: INTRO, UPGRADE, BOSS_INTRO, BOSS (se DESIGN.md).
+Kommer: INTRO, BOSS_INTRO, BOSS (se DESIGN.md). `upgrades_enabled = false`
+hopper over UPGRADE (tester og sammenligning i simulatoren).
 
 ## Slik kjører wave_manager en bølge
 
@@ -214,23 +220,25 @@ Ny bølge = ny rad. Nytt mønster = ny `static func` i riktig fil under
 ## Dataformat: oppgraderinger
 
 ```gdscript
-const UPGRADES := {
-	"rapid_fire": {
+const CATALOG := {
+	"attack_speed": {
 		"name": "HURTIGSKUDD",
-		"desc": "+1 KULE I LUFTA",
+		"desc": "+1 KULE I LUFTA SAMTIDIG",
 		"rarity": "common",     # common / rare / epic
 		"max_stacks": 3,
-		"apply": "_apply_rapid_fire",  # metodenavn i upgrades.gd
+		"apply": "_apply_attack_speed",  # static func i upgrades.gd
+		"icon": preload("res://games/ailien_invaders/sprites/Attck_speed_up.png"),
 	},
 }
 
-func _apply_rapid_fire(stats: Dictionary) -> void:
+static func _apply_attack_speed(stats: Dictionary, stacks: int) -> void:
 	stats["max_bullets"] += 1
 ```
 
-`player_stats.gd` holder `base` og en liste med tatte oppgraderinger, og
-regner ut `current` ved å starte fra `base` og kjøre alle `apply` på nytt.
-Da er det umulig å få stats "ut av synk".
+`player_stats.gd` holder `base` og lista `taken`, og regner ut `current`
+ved å starte fra `base` og kjøre alle `apply` på nytt (med antall stabler
+så langt, for nivåavhengige effekter). Da er det umulig å få stats "ut av
+synk". Umiddelbare effekter (liv nå) ligger som `on_pick` og gjøres av main.
 
 ## Fallgruver med Godot 3.6 og .pck
 
@@ -283,8 +291,9 @@ Avslutter med kode 0 når alt er grønt. De andre testene kjøres på samme måt
 |---|---|
 | `play_waves.tscn` | Spiller gjennom alle bølgene: antall, typer, innflyging, hp, overganger, bonusliv, VICTORY, seed-determinisme. Pluss regresjonssjekker: formasjonen hopper ikke når en kantfiende dykker, `max_divers` virker, lave fiender holder ilden. |
 | `check_patterns.tscn` | Kontraktene over. `AILIEN_CHECK=formations\|entries\|movements\|waves\|all`. |
-| `sim_waves.tscn` | En bot med menneskelige svakheter (reaksjonstid, begrenset blikk, overser kuler, sikter litt feil) spiller hver bølge mange ganger i hurtigtid og rapporterer klareringsrate, tid, tapte liv (kule/dykker) og verste kombinasjon. Brukes til å stille tallene i `waves.gd`. `AILIEN_SIM_SKILL=average\|good\|perfect`, `AILIEN_SIM_RUNS`, `AILIEN_SIM_WAVES="4-6"`. |
-| `screenshots.tscn` + `contact_sheets.py` | Bilder av hvert mønster, satt sammen til oversiktsark. `AILIEN_SHOTS=/sti`. |
+| `check_upgrades.tscn` | Katalogen (ikon, tekst, stabling), trekkingen (tre ulike, første har en sjelden, maks-stablede trekkes ikke) og hver oppgraderings effekt målt i spillet: vifte, skade, gjennomtrenging, store kuler, eksplosjon, målsøking, liv, skjold, pigger, størrelse, fart, og skjermen med autovalg. |
+| `sim_waves.tscn` | En bot med menneskelige svakheter (reaksjonstid, begrenset blikk, overser kuler, sikter litt feil) spiller hver bølge mange ganger i hurtigtid og rapporterer klareringsrate, tid, tapte liv (kule/dykker) og verste kombinasjon. Brukes til å stille tallene i `waves.gd`. `AILIEN_SIM_SKILL=average\|good\|perfect`, `AILIEN_SIM_RUNS`, `AILIEN_SIM_WAVES="4-6"`, `AILIEN_SIM_PICK=smart\|random\|none` (hvordan boten velger oppgraderinger i hele run). |
+| `screenshots.tscn` + `contact_sheets.py` | Bilder av hvert mønster, satt sammen til oversiktsark. `AILIEN_SHOTS=/sti`, `AILIEN_SHOTS_MODE=waves\|upgrades`. |
 
 Testene er skrevet for å feile høyt. I Godot 3 avbryter en skriptfeil bare
 funksjonen den skjer i, og den som kalte fortsetter med `null`. Derfor
@@ -302,5 +311,6 @@ ut nye bølger uten å endre spillet.
 
 Krokene testene bruker i spillet: `main.save_scores = false` (ikke lagre
 highscore), `main.wave_rows` (egne bølgerader), `player.autopilot`
-(`{"dir", "fire"}` i stedet for input; også tenkt til attract-modus) og
-`swarm.spawn_data()` (tving fram bestemte mønstre).
+(`{"dir", "fire"}` i stedet for input; også tenkt til attract-modus),
+`swarm.spawn_data()` (tving fram bestemte mønstre), `main.upgrades_enabled`,
+`main.pick_upgrade(id)` og `upgrade_screen.choose(index)`/`.autopilot`.

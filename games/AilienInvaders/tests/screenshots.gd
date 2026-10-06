@@ -12,6 +12,7 @@ extends Node
 # Bildene havner i mappa gitt av AILIEN_SHOTS (standard user://shots/).
 # AILIEN_SHOTS_MODE=waves tar i stedet to bilder per bølge i waves.gd:
 # banneret under innflygingen, og formasjonen i bevegelse.
+# AILIEN_SHOTS_MODE=upgrades tar oppgraderingsskjermen og HUD-en med ikoner.
 
 # load() i _ready, ikke preload (se tests/play_waves.gd).
 const BASE := "res://games/ailien_invaders/"
@@ -85,6 +86,10 @@ func _run() -> void:
 		yield(_shoot_waves(), "completed")
 		_finish()
 		return
+	if OS.get_environment("AILIEN_SHOTS_MODE") == "upgrades":
+		yield(_shoot_upgrades(), "completed")
+		_finish()
+		return
 	main.msg_label.visible = false
 
 	for f in Formations.NAMES:
@@ -130,6 +135,33 @@ func _shoot_waves() -> void:
 		for _k in 300:
 			main._process(DT)
 		yield(_shoot("bolge_%02d_b_kamp" % n), "completed")
+
+
+# Oppgraderingsskjermen etter bølge 1 (med sjelden garantert), og HUD-en
+# etter at noen kort er tatt, midt i en bølge med vifte og eksplosjon.
+func _shoot_upgrades() -> void:
+	main.upgrade_screen.autopilot = true
+	main._start_run(11)
+	main._set_state(main.State.UPGRADE)
+	main._process(DT)
+	yield(_shoot("oppgradering_a_skjerm"), "completed")
+	main.upgrade_screen.choose(0)
+	for id in ["multishot", "multishot", "attack_speed", "explosion", "potion", "size_down"]:
+		main._set_state(main.State.UPGRADE)
+		main.pick_upgrade(id)
+	main._start_wave(4)
+	main.player.invuln = 999.0
+	var t := 0.0
+	while main.swarm.is_entering() and t < 8.0:
+		main._process(DT)
+		t += DT
+	for _k in 60:
+		main._process(DT)
+	main.player.autopilot = {"dir": 0.0, "fire": true}
+	for _k in 12:
+		main._process(DT)
+	main.player.autopilot = null
+	yield(_shoot("oppgradering_b_hud"), "completed")
 
 
 func _spawn(mix: Array, formation: String, entry: String, movement: String) -> void:

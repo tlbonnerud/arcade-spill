@@ -1,28 +1,33 @@
 extends Sprite
 
-# Spillerskipet: bevegelse, skyting, treff og usårbarhet.
+# Spillerskipet: bevegelse, skyting, treff, skjold og usårbarhet.
 # Vet ingenting om fiender eller kuler — sier bare fra via signaler,
 # så main.gd kan koble det sammen med resten.
 #
-# Fremtid (se docs/ARCHITECTURE.md): tallene under flyttes til
-# player/player_stats.gd når oppgraderinger kommer inn.
+# Tallene kommer fra statblokken (player/player_stats.gd): main kaller
+# apply_stats() hver gang en oppgradering er valgt.
 
 signal fire_requested(pos)   # spilleren trykket skyt; kulelaget avgjør om det er lov
 signal lives_changed(lives)
+signal shield_changed(shield)
+signal hit(pos)              # noe traff spilleren (også når skjoldet tok det)
 signal died                  # ingen liv igjen
 
+const PlayerStats := preload("res://games/ailien_invaders/player/player_stats.gd")
+
 const TEXTURE := "res://games/ailien_invaders/sprites/Romskip.png"
-const SPEED := 220.0
-const START_LIVES := 3
-const MAX_LIVES := 5
 const INVULN_TIME := 2.0
+const SHIELD_INVULN_TIME := 0.8   # kort pust etter at skjoldet tok et treff
 const EDGE_MARGIN := 20.0
 const HIT_HALF_SIZE := Vector2(12, 10)  # halv bredde/høyde på treffboksen
 const MUZZLE_OFFSET := Vector2(0, -12)
+const SHIELD_COLOR := Color(0.6, 0.9, 1.0)
 
 var area_width := 640.0
 var start_position := Vector2.ZERO
-var lives := START_LIVES
+var stats: Dictionary = PlayerStats.BASE.duplicate()
+var lives := 3
+var shield := 0
 var invuln := 0.0
 var controllable := true  # false under game over
 # Settes av tester (og senere attract-modus) for å styre skipet uten input:
@@ -41,13 +46,27 @@ func setup(area_size: Vector2, y: float) -> void:
 	position = start_position
 
 
+# Ny statblokk (fra player_stats.current). Varige effekter: fart, størrelse,
+# maks liv. Skjoldet lades ved bølgestart (recharge_shield), ikke her.
+func apply_stats(s: Dictionary) -> void:
+	stats = s
+	scale = Vector2.ONE * float(stats["ship_scale"])
+
+
 func reset() -> void:
-	lives = START_LIVES
+	lives = int(stats["start_lives"])
+	shield = 0
 	invuln = 0.0
 	controllable = true
 	visible = true
+	modulate = Color.white
 	position = start_position
 	emit_signal("lives_changed", lives)
+	emit_signal("shield_changed", shield)
+
+
+func max_lives() -> int:
+	return int(stats["max_lives"])
 
 
 # Kalles hver frame av main.gd mens spillet pågår.
@@ -61,10 +80,10 @@ func step(delta: float) -> void:
 	if autopilot != null:
 		dir = clamp(autopilot["dir"], -1.0, 1.0)
 		fire = autopilot["fire"]
-	position.x = clamp(position.x + dir * SPEED * delta, EDGE_MARGIN, area_width - EDGE_MARGIN)
+	position.x = clamp(position.x + dir * float(stats["move_speed"]) * delta, EDGE_MARGIN, area_width - EDGE_MARGIN)
 
 	if fire:
-		emit_signal("fire_requested", position + MUZZLE_OFFSET)
+		emit_signal("fire_requested", position + MUZZLE_OFFSET * scale.y)
 
 	frame = int(OS.get_ticks_msec() / 120) % 4
 	if invuln > 0.0:
@@ -72,15 +91,22 @@ func step(delta: float) -> void:
 		visible = int(OS.get_ticks_msec() / 100) % 2 == 0
 	else:
 		visible = true
+	modulate = SHIELD_COLOR if shield > 0 else Color.white
 
 
-# Bonusliv (fra bølgedataene). Returnerer false hvis spilleren alt har maks.
+# Bonusliv og helbredelse. Returnerer false hvis spilleren alt har maks.
 func add_life() -> bool:
-	if lives >= MAX_LIVES:
+	if lives >= max_lives():
 		return false
 	lives += 1
 	emit_signal("lives_changed", lives)
 	return true
+
+
+# Lader skjoldet til det statblokken sier. Kalles ved hver bølgestart.
+func recharge_shield() -> void:
+	shield = int(stats["shield"])
+	emit_signal("shield_changed", shield)
 
 
 func is_vulnerable() -> bool:
@@ -91,11 +117,17 @@ func is_vulnerable() -> bool:
 func hit_test(p: Vector2, extra: Vector2 = Vector2.ZERO) -> bool:
 	if not is_vulnerable():
 		return false
-	var half := HIT_HALF_SIZE + extra
+	var half := HIT_HALF_SIZE * float(stats["ship_scale"]) + extra
 	return abs(p.x - position.x) < half.x and abs(p.y - position.y) < half.y
 
 
 func take_hit() -> void:
+	emit_signal("hit", position)
+	if shield > 0:
+		shield -= 1
+		invuln = SHIELD_INVULN_TIME
+		emit_signal("shield_changed", shield)
+		return
 	lives -= 1
 	emit_signal("lives_changed", lives)
 	if lives <= 0:

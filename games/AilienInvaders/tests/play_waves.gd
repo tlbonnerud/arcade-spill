@@ -139,18 +139,29 @@ func _play_wave(n: int) -> void:
 	# (try_hit over har allerede utløst cleared, så bonuslivet er delt ut.)
 	_check(swarm.alive_count() == 0, "bølge %d: alle drept" % n)
 	_check(main.state == main.State.WAVE_CLEAR, "bølge %d: WAVE_CLEAR" % n)
-	if data["bonus_life"]:
-		_check(main.player.lives == int(min(main.player.MAX_LIVES, lives_at_start + 1)),
-				"bølge %d: bonusliv (%d → %d)" % [n, lives_at_start, lives_before])
-	else:
-		_check(main.player.lives == lives_at_start, "bølge %d: ingen bonusliv" % n)
+	# Bonusliv fra bølgen pluss helbredelse fra oppgraderingene, opp til maks.
+	var gain := int(main.stats.current["heal_per_wave"]) + (1 if data["bonus_life"] else 0)
+	var want_lives := int(min(main.player.max_lives(), lives_at_start + gain))
+	_check(main.player.lives == want_lives, "bølge %d: liv etter bølgen %d (fikk %d)" % [n, want_lives, lives_before])
 
-	# Vent på neste bølge / victory.
+	# Vent på oppgraderingsskjermen / victory.
 	waited = 0.0
 	while main.state == main.State.WAVE_CLEAR and waited < 3.0:
 		yield(get_tree(), "idle_frame")
 		waited += _delta()
 	yield(get_tree(), "idle_frame")
+
+	if n < Waves.count():
+		_check(main.state == main.State.UPGRADE, "bølge %d: UPGRADE etter WAVE_CLEAR (state=%d)" % [n, main.state])
+		var offer: Array = main.upgrade_screen.offer
+		_check(offer.size() == 3, "bølge %d: tre kort (fikk %d)" % [n, offer.size()])
+		_check(_unique(offer), "bølge %d: tre ulike kort %s" % [n, str(offer)])
+		var before: int = main.stats.taken.size()
+		main.upgrade_screen.choose(0)
+		_check(main.stats.taken.size() == before + 1, "bølge %d: oppgradering tatt (%s)" % [n, offer[0]])
+		_check(main.wave == n + 1 and main.state == main.State.WAVE_INTRO,
+				"bølge %d: neste bølge starter etter valget" % n)
+		yield(get_tree(), "idle_frame")
 
 
 # Alt rng-avhengig ved en nyspawnet bølge: valgte mønstre og hver bane inn.
@@ -289,6 +300,15 @@ func _all_on_slots(swarm) -> bool:
 	for e in swarm.enemies:
 		if e["alive"] and e["sprite"].position.distance_to(swarm.slot_position(e)) > 1.0:
 			return false
+	return true
+
+
+func _unique(ids: Array) -> bool:
+	var seen := {}
+	for id in ids:
+		if seen.has(id):
+			return false
+		seen[id] = true
 	return true
 
 

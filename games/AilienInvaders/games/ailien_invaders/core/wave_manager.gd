@@ -414,28 +414,77 @@ func _fire_from(e: Dictionary) -> void:
 # Treff
 # ---------------------------------------------------------------------------
 
-# Prøver å treffe en fiende i punktet p. Returnerer true hvis noen ble truffet.
+# Prøver å treffe en fiende i punktet p med 1 skade. Returnerer true hvis
+# noen ble truffet. (Tester og enkle kall; spillerens kuler bruker hit_at.)
 func try_hit(p: Vector2) -> bool:
-	var hit := false
-	var killed := false
+	return not hit_at(p, 1, Vector2.ZERO, []).empty()
+
+
+# Treff i punktet p: første levende fiende som ikke står i `skip` (fiender
+# denne kula alt har gått gjennom) og som p ligger innenfor, tar `damage`.
+# `extra` utvider treffboksen (store kuler). Returnerer fienden som ble
+# truffet (e["alive"] sier om den døde), eller {} ved bom.
+func hit_at(p: Vector2, damage: int, extra: Vector2, skip: Array) -> Dictionary:
+	var half := HIT_HALF_SIZE + extra
+	var target := {}
+	for e in enemies:
+		if not e["alive"] or e in skip:
+			continue
+		var ep: Vector2 = e["sprite"].position
+		if abs(p.x - ep.x) < half.x and abs(p.y - ep.y) < half.y:
+			target = e
+			break
+	if target.empty():
+		return target
+	var killed := _damage(target, damage)
+	# Signalet sendes etter løkka: mottakeren kan kalle spawn() og bytte ut lista.
+	if killed and alive_count() == 0:
+		emit_signal("cleared")
+	return target
+
+
+# Alle levende fiender innenfor radius fra center tar `damage` (eksplosjon,
+# pigger). `skip` er fienden som utløste det. Returnerer antall drept.
+func damage_area(center: Vector2, radius: float, damage: int, skip: Dictionary = {}) -> int:
+	var kills := 0
+	for e in enemies:
+		if not e["alive"] or e == skip:
+			continue
+		if e["sprite"].position.distance_to(center) <= radius:
+			if _damage(e, damage):
+				kills += 1
+	if kills > 0 and alive_count() == 0:
+		emit_signal("cleared")
+	return kills
+
+
+# Nærmeste levende fiende innenfor max_dist fra p som ligger over
+# (y mindre enn) above_y. {} hvis ingen. Brukes av målsøkende kuler.
+func nearest_enemy(p: Vector2, max_dist: float, above_y: float) -> Dictionary:
+	var best := {}
+	var best_d := max_dist * max_dist
 	for e in enemies:
 		if not e["alive"]:
 			continue
 		var ep: Vector2 = e["sprite"].position
-		if abs(p.x - ep.x) < HIT_HALF_SIZE.x and abs(p.y - ep.y) < HIT_HALF_SIZE.y:
-			hit = true
-			e["hp"] -= 1
-			if e["hp"] <= 0:
-				e["alive"] = false
-				e["sprite"].visible = false
-				emit_signal("enemy_killed", e["points"])
-				killed = true
-			else:
-				e["flash"] = FLASH_TIME
-				e["sprite"].modulate = FLASH_COLOR
-			break
+		if ep.y >= above_y:
+			continue
+		var d := p.distance_squared_to(ep)
+		if d < best_d:
+			best_d = d
+			best = e
+	return best
 
-	# Signalet sendes etter løkka: mottakeren kan kalle spawn() og bytte ut lista.
-	if killed and alive_count() == 0:
-		emit_signal("cleared")
-	return hit
+
+# Gir fienden skade, blinker eller dreper. Returnerer true hvis den døde.
+# Sender enemy_killed, men ikke cleared: det gjør den som kaller, etter løkka si.
+func _damage(e: Dictionary, damage: int) -> bool:
+	e["hp"] -= damage
+	if e["hp"] <= 0:
+		e["alive"] = false
+		e["sprite"].visible = false
+		emit_signal("enemy_killed", e["points"])
+		return true
+	e["flash"] = FLASH_TIME
+	e["sprite"].modulate = FLASH_COLOR
+	return false

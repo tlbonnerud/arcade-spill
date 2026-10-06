@@ -9,15 +9,22 @@ extends Node2D
 # aldri én node per kule — se docs/ARCHITECTURE.md). Hver kuletype er et
 # sprite-ark med 10×10-ruter på rad; ruta velges ut fra kulas alder.
 #
-# Fremtid: kule-pool med flere typer (spread, pierce, laser) styrt av
-# player_stats, se docs/DESIGN.md.
+# Spillerens kuler styres av statblokken (player/player_stats.gd), som main
+# setter med apply_stats(): hvor mange i lufta, vifte, størrelse, skade,
+# gjennomtrenging, målsøking og eksplosjon ved drap.
 
-const PLAYER_BULLET_SPEED := 420.0
+const PlayerStats := preload("res://games/ailien_invaders/player/player_stats.gd")
+
 const ENEMY_BULLET_SPEED := 150.0
 const OFFSCREEN_MARGIN := 8.0
 const FRAME_SIZE := Vector2(10, 10)
+const SPREAD_STEP := 0.157           # radianer (9 grader) mellom kulene i en vifte
+const HOMING_RANGE := 240.0         # px: lenger unna enn dette svinger ikke kula
+const HOMING_AHEAD := 6.0           # målet må ligge minst så mange px foran kula
+const EXPLOSION_TIME := 0.25        # s: hvor lenge eksplosjonsringen vises
+const EXPLOSION_COLOR := Color(1.0, 0.7, 0.2)
 
-# Kuletyper. Svermen velger type per fiende (se swarm.gd ROW_BULLETS).
+# Kuletyper. Svermen velger type per fiende (enemies/enemy_types.gd).
 # frame_time er sekunder per rute; antall ruter regnes ut fra teksturbredden.
 # (preload krever bokstavelige stier i Godot 3, derfor ingen SPRITES-konstant.)
 const KINDS := {
@@ -29,10 +36,12 @@ const KINDS := {
 }
 
 var area_size := Vector2(640, 360)
-var player_bullet := {}  # {pos, kind, age}
-var player_bullet_active := false
-var enemy_bullets := []  # [{pos, kind, age, vel}]
+var stats: Dictionary = PlayerStats.BASE.duplicate()
+var player_bullets := []  # [{pos, vel, age, kind, volley, hits}]
+var enemy_bullets := []   # [{pos, kind, age, vel}]
+var explosions := []      # [{pos, radius, age}] bare for tegning
 var enemy_speed_mult := 1.0  # settes av main fra bølgedataene
+var next_volley := 0
 
 var _player: Node = null
 var _swarm: Node = null
@@ -48,18 +57,52 @@ func setup(size: Vector2, player: Node, swarm: Node) -> void:
 	_swarm = swarm
 
 
+func apply_stats(s: Dictionary) -> void:
+	stats = s
+
+
 func clear() -> void:
-	player_bullet_active = false
+	player_bullets.clear()
 	enemy_bullets.clear()
+	explosions.clear()
 	update()
 
 
-# Bare én spillerkule i lufta om gangen. Returnerer true hvis den ble avfyrt.
+func clear_enemy_bullets() -> void:
+	enemy_bullets.clear()
+
+
+# Antall skudd (vifter) i lufta. Taket er stats["max_bullets"]; én vifte
+# teller som ett skudd uansett hvor mange kuler den har.
+func volleys_in_air() -> int:
+	var seen := {}
+	for b in player_bullets:
+		seen[b["volley"]] = true
+	return seen.size()
+
+
+func player_bullet_count() -> int:
+	return player_bullets.size()
+
+
+func can_fire() -> bool:
+	return volleys_in_air() < int(stats["max_bullets"])
+
+
+# Avfyrer ett skudd: stats["shots"] kuler i vifte. Returnerer true hvis det gikk.
 func spawn_player_bullet(pos: Vector2) -> bool:
-	if player_bullet_active:
+	if not can_fire():
 		return false
-	player_bullet = _make_bullet(pos, "player")
-	player_bullet_active = true
+	var shots := int(stats["shots"])
+	var speed := float(stats["bullet_speed"])
+	for k in shots:
+		var angle: float = (k - (shots - 1) / 2.0) * SPREAD_STEP
+		var b := _make_bullet(pos, "player")
+		b["vel"] = Vector2(sin(angle), -cos(angle)) * speed
+		b["volley"] = next_volley
+		b["hits"] = []
+		player_bullets.append(b)
+	next_volley += 1
 	return true
 
 
@@ -75,13 +118,7 @@ func enemy_bullet_count() -> int:
 
 
 func step(delta: float) -> void:
-	if player_bullet_active:
-		player_bullet["pos"].y -= PLAYER_BULLET_SPEED * delta
-		player_bullet["age"] += delta
-		if player_bullet["pos"].y < -OFFSCREEN_MARGIN:
-			player_bullet_active = false
-		elif _swarm.try_hit(player_bullet["pos"]):
-			player_bullet_active = false
+	_step_player_bullets(delta)
 
 	var remaining := []
 	for b in enemy_bullets:
@@ -94,7 +131,62 @@ func step(delta: float) -> void:
 			continue
 		remaining.append(b)
 	enemy_bullets = remaining
+
+	for ex in explosions.duplicate():
+		ex["age"] += delta
+		if ex["age"] >= EXPLOSION_TIME:
+			explosions.erase(ex)
 	update()
+
+
+func _step_player_bullets(delta: float) -> void:
+	var homing := float(stats["homing"])
+	var damage := int(stats["damage"])
+	var pierce := int(stats["pierce"])
+	var explosion := float(stats["explosion"])
+	var extra := FRAME_SIZE / 2 * (float(stats["bullet_size"]) - 1.0)
+	var remaining := []
+	for b in player_bullets:
+		if homing > 0.0:
+			_steer(b, homing, delta)
+		b["pos"] += b["vel"] * delta
+		b["age"] += delta
+		if _offscreen(b["pos"]):
+			continue
+		var e: Dictionary = _swarm.hit_at(b["pos"], damage, extra, b["hits"])
+		if not e.empty():
+			if not e["alive"] and explosion > 0.0:
+				_explode(e["sprite"].position, explosion)
+			b["hits"].append(e)
+			if b["hits"].size() > pierce:
+				continue
+		remaining.append(b)
+	player_bullets = remaining
+
+
+# Målsøking: svinger kula mot nærmeste fiende som ligger foran den, med
+# begrenset svingfart. Farten holdes, bare retningen endres.
+func _steer(b: Dictionary, turn_rate: float, delta: float) -> void:
+	var e: Dictionary = _swarm.nearest_enemy(b["pos"], HOMING_RANGE, b["pos"].y - HOMING_AHEAD)
+	if e.empty():
+		return
+	var vel: Vector2 = b["vel"]
+	var want: float = (e["sprite"].position - b["pos"]).angle()
+	var diff := wrapf(want - vel.angle(), -PI, PI)
+	var max_turn := turn_rate * delta
+	b["vel"] = vel.rotated(clamp(diff, -max_turn, max_turn))
+
+
+# Drap med eksplosjon: naboene tar 1 skade. Smitter ikke videre (et drap fra
+# en eksplosjon gir ingen ny eksplosjon), ellers ville hele rader forsvinne.
+func _explode(center: Vector2, radius: float) -> void:
+	_swarm.damage_area(center, radius, 1)
+	show_ring(center, radius)
+
+
+# Tegner en ring som vokser og blekner (eksplosjon, pigger).
+func show_ring(center: Vector2, radius: float) -> void:
+	explosions.append({"pos": center, "radius": radius, "age": 0.0})
 
 
 func _offscreen(p: Vector2) -> bool:
@@ -110,17 +202,25 @@ func _make_bullet(pos: Vector2, kind: String) -> Dictionary:
 
 
 func _draw() -> void:
-	if player_bullet_active:
-		_draw_bullet(player_bullet)
+	var size := float(stats["bullet_size"])
+	for b in player_bullets:
+		var vel: Vector2 = b["vel"]
+		draw_set_transform(b["pos"], vel.angle() + PI / 2, Vector2.ONE * size)
+		_draw_bullet_at(b, -FRAME_SIZE / 2)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	for b in enemy_bullets:
-		_draw_bullet(b)
+		_draw_bullet_at(b, b["pos"] - FRAME_SIZE / 2)
+	for ex in explosions:
+		var u: float = ex["age"] / EXPLOSION_TIME
+		var color := EXPLOSION_COLOR
+		color.a = 1.0 - u
+		draw_arc(ex["pos"], ex["radius"] * (0.4 + 0.6 * u), 0.0, TAU, 20, color, 2.0)
 
 
-func _draw_bullet(b: Dictionary) -> void:
+func _draw_bullet_at(b: Dictionary, top_left: Vector2) -> void:
 	var kind: Dictionary = KINDS[b["kind"]]
 	var tex: Texture = kind["texture"]
 	var frames := int(tex.get_width() / FRAME_SIZE.x)
 	var frame := int(b["age"] / kind["frame_time"]) % frames
 	var src := Rect2(Vector2(frame * FRAME_SIZE.x, 0), FRAME_SIZE)
-	var dst := Rect2(b["pos"] - FRAME_SIZE / 2, FRAME_SIZE)
-	draw_texture_rect_region(tex, dst, src)
+	draw_texture_rect_region(tex, Rect2(top_left, FRAME_SIZE), src)

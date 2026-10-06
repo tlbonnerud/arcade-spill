@@ -11,6 +11,9 @@ extends Node
 #   AILIEN_SIM_WAVES  "1-10", "4,7" ... (standard alle)
 #   AILIEN_SIM_SKILL  average | good | perfect (standard good)
 #   AILIEN_SIM_MODE   waves | run | both (standard both)
+#   AILIEN_SIM_PICK   smart | random | none (standard smart): hvordan boten
+#                     velger oppgraderinger i "run". none = ingen oppgraderinger
+#                     (spillet går rett til neste bølge), for å sammenligne.
 #   AILIEN_SIM_JSON   fil som får resultatene som JSON
 #   AILIEN_WAVES_JSON fil med bølgerader (JSON-liste, samme felt som WAVES i
 #                     waves.gd) som brukes i stedet for waves.gd
@@ -51,6 +54,14 @@ var bot_rng := RandomNumberGenerator.new()
 var hit_bottom := false
 var hits_by_bullet := 0
 var hits_by_diver := 0
+var pick_mode := "smart"
+var picks := {}   # {id: antall ganger valgt} over alle runs
+
+# Boten "smart" tar det øverste på lista som tilbys. Skade først: bølgene er
+# bygget rundt én kule, så alt som dreper fortere er verdt mest.
+const PICK_PRIORITY := ["multishot", "damage", "attack_speed", "piercing", "homing",
+		"explosion", "hp_up", "big_bullets", "potion", "healing", "thorns", "size_down", "move_speed"]
+const LIFE_PICKS := ["hp_up", "healing", "potion"]
 
 # Bot-tilstand
 var decide_t := 0.0
@@ -107,6 +118,12 @@ func _run() -> void:
 
 	var runs := int(_env("AILIEN_SIM_RUNS", "10"))
 	var mode := _env("AILIEN_SIM_MODE", "both")
+	pick_mode = _env("AILIEN_SIM_PICK", "smart")
+	if not (pick_mode in ["smart", "random", "none"]):
+		_abort("ukjent AILIEN_SIM_PICK '%s' (smart, random, none)" % pick_mode)
+		return
+	main.upgrades_enabled = pick_mode != "none"
+	main.upgrade_screen.autopilot = true  # skjermen skal ikke lese tastaturet
 	var waves := _parse_waves(_env("AILIEN_SIM_WAVES", ""))
 	for n in waves:
 		if n < 1 or n > main.wave_count():
@@ -126,7 +143,7 @@ func _run() -> void:
 			result["waves"].append(_report_wave(n, stats))
 
 	if mode in ["run", "both"]:
-		print("== Hele spillet fra bølge 1, 3 liv, bot '%s', %d runs ==" % [skill_name, runs])
+		print("== Hele spillet fra bølge 1, 3 liv, bot '%s', oppgraderinger '%s', %d runs ==" % [skill_name, pick_mode, runs])
 		var reached := []
 		var wins := 0
 		var times := []
@@ -146,8 +163,10 @@ func _run() -> void:
 				% [wins, runs, reached[reached.size() / 2], str(histogram)])
 		if times.size() > 0:
 			print("snitt-tid for seier: %.0f s" % _mean(times))
+		if not picks.empty():
+			print("valgte oppgraderinger (id: antall): %s" % str(picks))
 		result["full_runs"] = {"wins": wins, "runs": runs, "reached": reached,
-				"mean_win_time": _mean(times) if times.size() > 0 else 0.0}
+				"mean_win_time": _mean(times) if times.size() > 0 else 0.0, "picks": picks}
 
 	var json_path := _env("AILIEN_SIM_JSON", "")
 	if json_path != "":
@@ -201,6 +220,9 @@ func _play_run(seed_value: int) -> Dictionary:
 # Ett spillsteg: boten bestemmer seg, spillet går 1/60 s fram. Teller også
 # hva som traff spilleren (kule eller dykker).
 func _tick() -> void:
+	if main.state == main.State.UPGRADE:
+		_pick_upgrade()
+		return
 	_bot_step()
 	var lives_before: int = main.player.lives
 	var divers_near := false
@@ -222,6 +244,28 @@ func _on_reached_bottom() -> void:
 # ---------------------------------------------------------------------------
 # Boten
 # ---------------------------------------------------------------------------
+
+# Velger et kort på oppgraderingsskjermen. "smart" følger PICK_PRIORITY, men
+# tar liv hvis den er nede på sitt siste. "random" trekker tilfeldig.
+func _pick_upgrade() -> void:
+	var offer: Array = main.upgrade_screen.offer
+	if offer.empty():
+		return
+	var index := 0
+	if pick_mode == "random":
+		index = bot_rng.randi() % offer.size()
+	else:
+		var best := 999
+		for i in offer.size():
+			var rank: int = PICK_PRIORITY.find(offer[i])
+			if main.player.lives <= 1 and offer[i] in LIFE_PICKS:
+				rank -= 100
+			if rank < best:
+				best = rank
+				index = i
+	var id: String = offer[index]
+	picks[id] = int(picks.get(id, 0)) + 1
+	main.upgrade_screen.choose(index)
 
 func _reset_bot(seed_value: int) -> void:
 	bot_rng.seed = seed_value * 7 + 13
@@ -265,7 +309,7 @@ func _bot_step() -> void:
 		dir = sign(target_x - px)
 
 	var fire := false
-	if bullets.player_bullet_active:
+	if not bullets.can_fire():
 		fire_cd = skill["fire_delay"]
 	else:
 		fire_cd -= DT
