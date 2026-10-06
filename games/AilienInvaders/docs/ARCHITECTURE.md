@@ -14,33 +14,43 @@ games/ailien_invaders/
 │                           eier tilstandsmaskinen. Ingen spillregler her.
 ├── core/                   Ting som ikke er spiller eller fiende
 │   ├── bullets.gd          ✅ Kulelag: flytter, tegner, sjekker treff
-│   ├── run_state.gd        ⬜ Poeng, bølge, valgte oppgraderinger, seed
-│   └── wave_manager.gd     ⬜ Leser bølgedata, spawner, kjører inn/ut-animasjon,
-│                              sier fra når bølgen er ferdig
+│   └── wave_manager.gd     ✅ Leser bølgedata, spawner, kjører innflyging,
+│                              bevegelse, dykk og skyting, sier fra via signaler
 ├── player/
 │   ├── player.gd           ✅ Bevegelse, skyting, treff, usårbarhet
-│   └── player_stats.gd     ⬜ Basisstats + oppgraderingsmodifikatorer
+│   └── player_stats.gd     ✅ Basisstats + tatte oppgraderinger → current
 ├── enemies/
-│   ├── swarm.gd            ✅ Dagens grid-sverm (blir til wave_manager + enemy)
-│   ├── enemy.gd            ⬜ Én fiende: type, hp, poeng, animasjon, skytemønster
-│   ├── enemy_types.gd      ⬜ Tabell: grunt/soldat/skytter/elite
-│   ├── formations.gd       ⬜ Grid, V, ring, sjakkbrett → liste med posisjoner
-│   ├── movement_patterns.gd⬜ Klassisk, sinus, dykk
-│   ├── entry_patterns.gd   ⬜ Innflyging: fra toppen, sidene, spiral
+│   ├── enemy_types.gd      ✅ Tabell: grunt/soldat/skytter/elite (hp, poeng, kule, sikting)
+│   ├── formations.gd       ✅ 9 formasjoner: rows, v_shape, ring, checkerboard,
+│   │                          two_groups, diamond, arrow, columns, x_shape
+│   ├── entry_patterns.gd   ✅ 8 innflyginger: from_top, from_sides, spiral, swoop,
+│   │                          rain, crossover, loop, snake
+│   ├── movement_patterns.gd✅ 7 bevegelser: classic, sine, figure8, split, rock,
+│   │                          orbit, pulse (dykk ligger i wave_manager)
 │   └── boss/
 │       ├── boss.gd         ⬜ Bossen med faser
 │       └── boss.tscn       ⬜ (scene, fordi bossen bør kunne pusses på i editoren)
 ├── waves/
-│   └── waves.gd            ⬜ De 10 bølgene som data (se format under)
+│   └── waves.gd            ✅ De 10 bølgene som data (se format under)
 ├── upgrades/
-│   ├── upgrades.gd         ⬜ Katalog: id, navn, sjeldenhet, apply()
-│   └── upgrade_screen.gd   ⬜ "Velg 1 av 3"-skjermen
+│   ├── upgrades.gd         ✅ Katalog: id, navn, sjeldenhet, ikon, apply(), offer()
+│   └── upgrade_screen.gd   ✅ "Velg 1 av 3"-skjermen (bygges i kode)
 ├── ui/
 │   ├── hud.gd              ⬜ Poeng, liv, bølge, aktive oppgraderinger
 │   └── transitions.gd      ⬜ Bølgebanner, ADVARSEL, fade, victory
 ├── sprites/                Grafikk
-└── docs/                   Disse dokumentene (eksporteres ikke til .pck)
+├── docs/                   Disse dokumentene (eksporteres ikke til .pck)
+└── tests/                  Automatiske tester (ekskludert fra .pck)
+    ├── play_waves.tscn/.gd     Spiller gjennom alle bølgene uten skjerm
+    ├── check_patterns.tscn/.gd Kontrakter for mønstre og bølgedata
+    ├── sim_waves.tscn/.gd      Bot som måler hvor vanskelige bølgene er
+    ├── check_upgrades.tscn/.gd Katalog, trekking og hver oppgraderings effekt
+    ├── screenshots.tscn/.gd    Tar bilder av hvert mønster
+    └── contact_sheets.py       Setter bildene sammen til oversiktsark
 ```
+
+(`tests/` ligger i prosjektrota, ikke under `games/ailien_invaders/`, så den
+aldri blir med i .pck-en.)
 
 ## Hvorfor ikke én mappe per level
 
@@ -70,93 +80,165 @@ oppgraderingsskjermen, victory-skjermen. Logikk holdes uansett i `.gd`.
 ## Ansvar og signaler (slik det er nå)
 
 ```
-main.gd
+main.gd  (eier stats = player_stats.gd og deler den ut med apply_stats())
  ├── player (player.gd)
  │     fire_requested(pos) ──► bullets.spawn_player_bullet
- │     lives_changed(n)    ──► main → HUD
+ │     lives_changed(n), shield_changed(n) ──► main → HUD
+ │     hit(pos)            ──► main → pigger (bullets.clear_enemy_bullets, swarm.damage_area)
  │     died                ──► main._set_game_over
- ├── swarm (swarm.gd)
- │     fire_requested(pos, kind) ──► bullets.spawn_enemy_bullet
+ ├── upgrade_screen (upgrades/upgrade_screen.gd)
+ │     chosen(id)          ──► main → stats.take, apply_stats, neste bølge
+ ├── swarm (core/wave_manager.gd)
+ │     fire_requested(pos, kind, dir) ──► bullets.spawn_enemy_bullet
  │     enemy_killed(pts)   ──► main → poeng
- │     cleared             ──► main → neste bølge
+ │     entry_finished      ──► main → WAVE_INTRO → WAVE
+ │     cleared             ──► main → WAVE_CLEAR → neste bølge / VICTORY
  │     reached_bottom      ──► main._set_game_over
  └── bullets (bullets.gd)
-       kaller swarm.try_hit(pos) og player.hit_test(pos)/take_hit()
+       kaller swarm.hit_at(pos, damage, extra, skip) / damage_area / nearest_enemy
+       og player.hit_test(pos)/take_hit()
 ```
 
 Regelen: **delene kjenner ikke hverandre**, bare main gjør det. Player vet
-ikke hva en fiende er. Swarm vet ikke hva en kule er. Bullets får referanser
-via `setup()` og bruker bare `try_hit`/`hit_test`/`take_hit`.
+ikke hva en fiende er. Wave manager vet ikke hva en kule er, den får bare
+spillerens posisjon (for sikting og dykk) via `step()`. Bullets får
+referanser via `setup()` og bruker bare `try_hit`/`hit_test`/`take_hit`.
+Kontakt mellom dykkende fiender og spilleren sjekker main selv med
+`swarm.diver_positions()` og `player.hit_test()`.
 
 Hver frame kaller main `step(delta)` på delene i fast rekkefølge:
 spiller, sverm, kuler. (Ikke `update()`: det navnet er opptatt av
 `CanvasItem` og betyr "tegn på nytt".)
 
-## Planlagt tilstandsmaskin i main.gd
+## Tilstandsmaskin i main.gd
 
 ```gdscript
-enum State { INTRO, WAVE_INTRO, WAVE, WAVE_CLEAR, UPGRADE, BOSS_INTRO, BOSS, VICTORY, GAME_OVER }
-var state := State.INTRO
-
-func _set_state(next):
-	# avslutt gammel, start ny (banner, tween, vis/skjul skjermer)
+enum State { WAVE_INTRO, WAVE, WAVE_CLEAR, UPGRADE, VICTORY, GAME_OVER }
 ```
 
-`_process` gjør bare det tilstanden tillater: i UPGRADE stepper vi ikke
-sverm og kuler, i WAVE_INTRO stepper vi spilleren men ikke fiendenes skyting.
+| Tilstand | Stepper | Går videre når |
+|---|---|---|
+| WAVE_INTRO | spiller, sverm (innflyging, ingen skyting), kuler | `entry_finished` → WAVE, eller `cleared` → WAVE_CLEAR |
+| WAVE | alt, pluss dykker-kontakt | `cleared` → WAVE_CLEAR |
+| WAVE_CLEAR | spiller, kuler; bakgrunnen scroller fortere | 1,2 s → UPGRADE, eller VICTORY etter siste |
+| UPGRADE | oppgraderingsskjermen (input, autovalg) | `chosen` → neste bølge |
+| VICTORY / GAME_OVER | ingenting (svermen animeres) | START → nytt run |
+
+Kommer: INTRO, BOSS_INTRO, BOSS (se DESIGN.md). `upgrades_enabled = false`
+hopper over UPGRADE (tester og sammenligning i simulatoren).
+
+## Slik kjører wave_manager en bølge
+
+1. `spawn(n, rng)` henter rad n fra `waves.gd`, trekker **én** formasjon,
+   **én** innflyging og **én** bevegelse fra poolene med run-RNG-en, bygger
+   plassene (`formations.gd`) og banene inn (`entry_patterns.gd`), og lager
+   én `Sprite` per fiende utenfor skjermen. Valgene lagres i
+   `wave_data["chosen"]`.
+2. Innflyging: hver fiende følger en kvadratisk bezier fra startpunkt via
+   kontrollpunkt til plassen sin, med forsinkelse per fiende. Regnes ut per
+   frame i `_step_entry()`, ingen tweens (billigere på Pi-en, og testbart
+   uten skjerm). Fiender kan treffes underveis, men skyter ikke.
+3. Bevegelse: `movement_patterns.gd` eier en tilstand. `step()` flytter
+   tiden fram én gang per frame, og `place(state, slot)` sier hvor hver
+   enkelt plass er akkurat nå. Fordi posisjonen regnes ut per fiende kan et
+   mønster rotere formasjonen (rock, orbit), dele den i to (split) eller la
+   den puste (pulse), ikke bare skyve den. `place()` allokerer ingenting:
+   alt tungt (sin/cos, trygge utslag) regnes ut i `start()`/`step()`.
+   Nedstigningen styres av bølgens `descent_time`, uavhengig av formasjonens
+   bredde, og alt går fortere jo flere som er døde (`dead_frac`).
+4. Dykk: hvis bølgen har `dives`, forlater en fiende plassen sin hvert
+   `dive_interval` sekund (opptil `max_divers` samtidig, typer fra
+   `dive_types` eller `can_dive`), stuper i en bue mot spilleren og flyr
+   tilbake til plassen sin (som kan ha flyttet seg). Faren er kroppen:
+   dykkeren skyter ikke, for en kule avfyrt i spillerens rad er enten ufarlig
+   eller umulig å unngå. Plassen til en dykker teller fortsatt med i
+   formasjonens kanter, ellers vandrer formasjonen ut mens den er borte.
+5. Skyting: vektet trekning (`fire_weight`) blant fiender i formasjonen.
+   `aimed` gir retning mot spilleren, ellers rett ned. Fiender som står så
+   lavt at kula når spilleren på under `MIN_FIRE_WINDOW` (0,4 s) holder ilden,
+   så hvert skudd kan unngås.
+
+Typene i `enemies`-lista fyller formasjonen ovenfra og ned, og innenfor en
+rad fra midten og ut. Da blir fargebåndene speilsymmetriske også når en type
+tar slutt midt i en rad.
+
+## Kontrakter for mønstre
+
+Hver mønsterfil har en `NAMES`-liste og en KONTRAKT-kommentar øverst.
+`tests/check_patterns.tscn` sjekker dem for alle navn:
+
+- **Formasjoner** (8–40 fiender): nøyaktig antall plasser, innenfor
+  skjermen og over `MAX_Y`, minst 28 px mellom plasser, sentrert.
+- **Innflyginger:** starter utenfor skjermen, ender på plassen, flyr aldri
+  gjennom spillerens rad, og hele innflygingen tar maks 4,5 s.
+- **Bevegelser:** sømløs start, aldri utenfor skjermen (mønsteret må dempe
+  seg på brede formasjoner), når bunnen etter ca. `descent_time`, ingen hopp.
+- **Bølgene:** alt de refererer til finnes, og hver kombinasjon poolene kan
+  trekke holder kontraktene over med bølgens egne tall.
+
+Nytt mønster: skriv funksjonen, legg navnet i `NAMES` og `match`-blokken,
+kjør testen. Da vet du at det virker med alle formasjoner og antall.
 
 ## Dataformat: bølger
 
 Ren GDScript i `waves/waves.gd`. Ingen Resource-klasser (se fallgruver).
+Felt som mangler fylles fra `DEFAULTS` i samme fil.
 
 ```gdscript
 const WAVES := [
 	{ # bølge 1
-		"enemies": [["grunt", 16]],
-		"formations": ["rows_2"],
-		"movements": ["classic"],
+		"enemies": [["grunt", 16]],          # første type havner øverst
+		"formations": ["rows"],
 		"entries": ["from_top"],
-		"fire_rate_mult": 1.0,
-		"hp_mult": 1.0,
+		"movements": ["classic"],
+		"max_bullets": 3,
 	},
-	{ # bølge 5
-		"enemies": [["elite", 8], ["grunt", 16]],
-		"formations": ["ring", "v_shape"],
-		"movements": ["classic", "dive"],
-		"entries": ["from_sides", "spiral"],
-		"fire_rate_mult": 1.4,
-		"hp_mult": 1.6,
-		"banner": "ELITE-BØLGE",
+	{ # bølge 3
+		"enemies": [["elite", 4], ["skytter", 8], ["soldat", 16]],
+		"formations": ["ring", "checkerboard"],
+		"entries": ["spiral", "swoop"],
+		"movements": ["sine", "classic"],
+		"dives": true, "dive_interval": 3.0,
+		"hp_mult": 1.3, "fire_rate_mult": 1.5,
+		"speed_mult": 1.3, "bullet_speed_mult": 1.2,
+		"max_bullets": 5,
+		"banner": "BØLGE 3 — ELITE",
 	},
 	# ...
-	{ "boss": "boss_1" }, # bølge 10
+	{ "boss": "boss_1" }, # bølge 10 (kommer)
 ]
 ```
 
 `wave_manager.gd` trekker én verdi fra hver liste (med run-seeden) og bygger
 bølgen. Formasjonene i `formations.gd` er funksjoner som tar antall fiender
-og returnerer posisjoner, så samme formasjon virker med 16 eller 40.
+og returnerer plasser sortert ovenfra og ned, så samme formasjon virker med
+16 eller 40, og de sterkeste typene alltid står bakerst.
+
+Ny bølge = ny rad. Nytt mønster = ny `static func` i riktig fil under
+`enemies/` pluss navnet i `match`-blokken der, så kan bølgene bruke det.
 
 ## Dataformat: oppgraderinger
 
 ```gdscript
-const UPGRADES := {
-	"rapid_fire": {
+const CATALOG := {
+	"attack_speed": {
 		"name": "HURTIGSKUDD",
-		"desc": "+1 KULE I LUFTA",
+		"desc": "+1 KULE I LUFTA SAMTIDIG",
 		"rarity": "common",     # common / rare / epic
 		"max_stacks": 3,
-		"apply": "_apply_rapid_fire",  # metodenavn i upgrades.gd
+		"apply": "_apply_attack_speed",  # static func i upgrades.gd
+		"icon": preload("res://games/ailien_invaders/sprites/Attck_speed_up.png"),
 	},
 }
 
-func _apply_rapid_fire(stats: Dictionary) -> void:
+static func _apply_attack_speed(stats: Dictionary, stacks: int) -> void:
 	stats["max_bullets"] += 1
 ```
 
-`player_stats.gd` holder `base` og en liste med tatte oppgraderinger, og
-regner ut `current` ved å starte fra `base` og kjøre alle `apply` på nytt.
-Da er det umulig å få stats "ut av synk".
+`player_stats.gd` holder `base` og lista `taken`, og regner ut `current`
+ved å starte fra `base` og kjøre alle `apply` på nytt (med antall stabler
+så langt, for nivåavhengige effekter). Da er det umulig å få stats "ut av
+synk". Umiddelbare effekter (liv nå) ligger som `on_pick` og gjøres av main.
 
 ## Fallgruver med Godot 3.6 og .pck
 
@@ -191,7 +273,44 @@ Disse er ikke åpenbare, og koster timer hvis man går på dem:
 
 ## Testing
 
-`ARCADE_SMOKE_TEST=1` starter spillet og går ut etter et halvt sekund. For
-logikk er det bedre med et skript som kjøres med `-s` og driver spillet via
-API-et (`swarm.try_hit`, `bullets.spawn_enemy_bullet`, `main._start_run`).
-Legg slike tester i `tests/` når de blir mer enn én.
+`ARCADE_SMOKE_TEST=1` starter spillet og går ut etter et halvt sekund.
+
+Logikktestene i `tests/` er scener med et skript som instansierer
+`main.tscn` og driver spillet via API-et (`swarm.try_hit`, `main._start_wave`).
+De kjøres som hovedscene, **ikke** med `-s`: i skriptmodus lastes ikke
+`Arcade`-autoloaden, og da kan ikke main.gd parses.
+
+```bash
+cd games/AilienInvaders
+../../tools/Godot3.app/Contents/MacOS/Godot --no-window --path . res://tests/play_waves.tscn
+```
+
+Avslutter med kode 0 når alt er grønt. De andre testene kjøres på samme måte:
+
+| Test | Hva den gjør |
+|---|---|
+| `play_waves.tscn` | Spiller gjennom alle bølgene: antall, typer, innflyging, hp, overganger, bonusliv, VICTORY, seed-determinisme. Pluss regresjonssjekker: formasjonen hopper ikke når en kantfiende dykker, `max_divers` virker, lave fiender holder ilden. |
+| `check_patterns.tscn` | Kontraktene over. `AILIEN_CHECK=formations\|entries\|movements\|waves\|all`. |
+| `check_upgrades.tscn` | Katalogen (ikon, tekst, stabling), trekkingen (tre ulike, første har en sjelden, maks-stablede trekkes ikke) og hver oppgraderings effekt målt i spillet: vifte, skade, gjennomtrenging, store kuler, eksplosjon, målsøking, liv, skjold, pigger, størrelse, fart, og skjermen med autovalg. |
+| `sim_waves.tscn` | En bot med menneskelige svakheter (reaksjonstid, begrenset blikk, overser kuler, sikter litt feil) spiller hver bølge mange ganger i hurtigtid og rapporterer klareringsrate, tid, tapte liv (kule/dykker) og verste kombinasjon. Brukes til å stille tallene i `waves.gd`. `AILIEN_SIM_SKILL=average\|good\|perfect`, `AILIEN_SIM_RUNS`, `AILIEN_SIM_WAVES="4-6"`, `AILIEN_SIM_PICK=smart\|random\|none` (hvordan boten velger oppgraderinger i hele run). |
+| `screenshots.tscn` + `contact_sheets.py` | Bilder av hvert mønster, satt sammen til oversiktsark. `AILIEN_SHOTS=/sti`, `AILIEN_SHOTS_MODE=waves\|upgrades`. |
+
+Testene er skrevet for å feile høyt. I Godot 3 avbryter en skriptfeil bare
+funksjonen den skjer i, og den som kalte fortsetter med `null`. Derfor
+returnerer hver delsjekk `true` til slutt, "ikke true" teller som feil, spillets
+skript lastes med `load()` + `can_instance()` i stedet for `preload`, og en
+vaktbikkje avslutter med kode 1 hvis testen stopper opp. Uten dette kunne en
+parsefeil i et mønster gi "OK" eller en Godot-prosess som aldri avslutter.
+Ett hull gjenstår og kan ikke tettes innenfra: har *testskriptet selv* en
+parsefeil, får noden ikke noe skript, og Godot blir stående. Kjør derfor
+testene med tidsavbrudd i skript og CI (`timeout 600 Godot ...`).
+
+`AILIEN_WAVES_JSON=/sti/waves.json` får `check_patterns` og `sim_waves` til
+å bruke bølgerader fra en JSON-fil i stedet for `waves.gd`, så man kan prøve
+ut nye bølger uten å endre spillet.
+
+Krokene testene bruker i spillet: `main.save_scores = false` (ikke lagre
+highscore), `main.wave_rows` (egne bølgerader), `player.autopilot`
+(`{"dir", "fire"}` i stedet for input; også tenkt til attract-modus),
+`swarm.spawn_data()` (tving fram bestemte mønstre), `main.upgrades_enabled`,
+`main.pick_upgrade(id)` og `upgrade_screen.choose(index)`/`.autopilot`.

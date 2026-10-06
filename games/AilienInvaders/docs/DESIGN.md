@@ -10,6 +10,8 @@ Et **run** er 10 bølger. Etter hver bølge velger du **1 av 3 oppgraderinger**.
 Bølge 10 er en **boss**. Dør du, starter du på nytt fra bølge 1 uten
 oppgraderinger (permadeath). Målet er å fullføre runnet med høyest mulig poeng.
 
+Status: de 10 bølgene og oppgraderingene finnes, bossen gjenstår.
+
 Arkade-rammer som styrer alt:
 
 - Et run skal ta **5–8 minutter**. Folk står i kø bak maskinen.
@@ -54,52 +56,54 @@ INTRO ─► WAVE_INTRO ─► WAVE ─► WAVE_CLEAR ─► UPGRADE ─┐
 
 ## Spillerstats
 
-Alle tall som oppgraderinger kan påvirke samles i én stat-blokk.
-Basisverdiene er dagens oppførsel.
+Alle tall som oppgraderinger kan påvirke samles i én statblokk
+(`player/player_stats.gd`). Basisverdiene er oppførselen uten oppgraderinger.
 
 | Stat | Basis | Påvirkes av |
 |---|---|---|
 | `move_speed` | 220 px/s | Rakettstøvler |
-| `max_bullets` | 1 kule i lufta | Dobbeltløp |
-| `bullet_speed` | 420 px/s | Turbokuler |
+| `max_bullets` | 1 skudd i lufta | Hurtigskudd |
+| `bullet_speed` | 420 px/s | (ingen ennå) |
 | `bullet_size` | 1,0 | Store kuler |
-| `shots` | 1 | Spredningsskudd (2, så 3) |
+| `shots` | 1 kule per skudd | Spredningsskudd |
 | `pierce` | 0 | Gjennomtrenging |
-| `damage` | 1 | Tungt skyts |
-| `lives` | 3 | Ekstra liv |
-| `shield` | 0 | Skjold (tåler ett treff per bølge) |
-| `score_mult` | 1,0 | Grådighet |
-| `enemy_bullet_speed_mult` | 1,0 | Tidsfelt |
-| `bombs` | 0 | Bombe (B-knappen) |
+| `damage` | 1 | Skarpt skyts |
+| `homing` | 0 rad/s | Målsøking |
+| `explosion` | 0 px | Eksplosjon |
+| `start_lives` / `max_lives` | 3 / 5 | Mer liv |
+| `heal_per_wave` | 0 | Helbredelse |
+| `shield` | 0 | Skjolddrikk |
+| `thorns` | 0 | Pigger |
+| `ship_scale` | 1,0 | Mindre skip |
 
-## Oppgraderingskatalog (v1)
+## Oppgraderingskatalog (slik den ligger i `upgrades/upgrades.gd`)
 
 Sjeldenhet: **V** = vanlig (vekt 10), **S** = sjelden (vekt 4), **E** = episk (vekt 1).
+Ikonene er 24×20-sprites i `sprites/`.
 
-| Id | Navn | Effekt | Sjeldenhet | Stables? |
-|---|---|---|---|---|
-| `rapid_fire` | HURTIGSKUDD | +1 `max_bullets` | V | ja (maks 4) |
-| `big_bullets` | STORE KULER | `bullet_size` ×1,5 | V | ja (maks 2) |
-| `turbo` | TURBOKULER | `bullet_speed` +30 % | V | ja (maks 2) |
-| `boots` | RAKETTSTØVLER | `move_speed` +25 % | V | ja (maks 2) |
-| `greed` | GRÅDIGHET | `score_mult` +0,25 | V | ja |
-| `slow_field` | TIDSFELT | fiendekuler 20 % tregere | V | ja (maks 2) |
-| `spread` | SPREDNINGSSKUDD | `shots` +1 (vifte) | S | ja (maks 3) |
-| `pierce` | GJENNOMTRENGING | kula går gjennom +1 fiende | S | ja (maks 2) |
-| `heavy` | TUNGT SKYTS | `damage` +1 | S | ja |
-| `extra_life` | EKSTRA LIV | +1 liv | S | ja |
-| `shield` | SKJOLD | tåler ett treff, lades opp hver bølge | S | nei |
-| `repair` | REPARASJON | +1 liv hver 3. bølge | S | nei |
-| `bomb` | BOMBE | B: dreper alle fiendekuler + 1 hp på alle. 1 lading per bølge | E | nei |
-| `side_guns` | SIDEKANONER | to ekstra kuler skrått ut til sidene | E | nei |
-| `laser` | LASER | hold A: kontinuerlig stråle, lav skade, uendelig gjennomtrenging | E | nei |
+| Id | Navn | Effekt | Sjeldenhet | Maks | Ikon |
+|---|---|---|---|---|---|
+| `multishot` | SPREDNINGSSKUDD | +1 kule per skudd, i vifte (9° mellom) | S | 3 | Multishot |
+| `damage` | SKARPT SKYTS | +1 skade per kule | S | 3 | atck_up |
+| `attack_speed` | HURTIGSKUDD | +1 skudd (vifte) i lufta samtidig | V | 3 | Attck_speed_up |
+| `piercing` | GJENNOMTRENGING | kula går gjennom +1 fiende | S | 2 | Piercing |
+| `homing` | MÅLSØKING | kulene svinger mot nærmeste fiende foran (2,2 så 4,0 rad/s) | S | 2 | Homing |
+| `explosion` | EKSPLOSJON | drap skader fiender innen 46 px (nivå 2: 72 px) med 1. Smitter ikke. | S | 2 | Explotion |
+| `big_bullets` | STORE KULER | kulene 50 % større (treffboks og tegning) | V | 2 | Big_bullet |
+| `hp_up` | MER LIV | +1 liv nå og +1 maks liv | V | 3 | HP_up |
+| `healing` | HELBREDELSE | +1 liv nå og etter hver bølge | S | 1 | Healing |
+| `potion` | SKJOLDDRIKK | tåler ett treff per bølge, lades ved bølgestart | S | 2 | Potion |
+| `thorns` | PIGGER | treff på deg: fiender innen 150 px tar 2 skade, fiendekulene forsvinner | E | 1 | Thorns |
+| `size_down` | MINDRE SKIP | skip og treffboks 25 % mindre | V | 2 | Size_down |
+| `move_speed` | RAKETTSTØVLER | +30 % fart | V | 2 | Move_speed_up |
 
 Regler for trekking:
 
 - Aldri to like i samme tilbud.
-- Oppgraderinger som er maks-stablet eller allerede tatt (ikke stables) trekkes ikke.
+- Oppgraderinger som er maks-stablet trekkes ikke.
 - Første tilbud (etter bølge 1) inneholder alltid minst én S eller bedre, så
   runnet "kjennes" fra start.
+- Skjermen velger selv det markerte kortet etter 15 s.
 
 ## Fiender
 
@@ -107,34 +111,91 @@ Spritene som finnes i dag tildeles roller. Boss-sprite må tegnes.
 
 | Type | Sprite | Kule | HP | Poeng | Oppførsel |
 |---|---|---|---|---|---|
-| Grunt | Enemy_3 (manet) | Projectile_5, lilla kule | 1 | 10 | Skyter sjelden, rett ned. |
+| Grunt | Enemy_4 (manet) | Projectile_5, lilla kule | 1 | 10 | Skyter sjelden, rett ned. |
 | Soldat | Enemy_1 (kyklop) | Projectile_3, grønn | 1 | 20 | Skyter oftere. |
 | Skytter | Enemy_2 (vinget) | Projectile_4, blå | 2 | 30 | Sikter mot spilleren. |
-| Elite | Enemy_4 (hai) | Projectile_2, rød | 3 | 40 | Dykker ut av formasjonen mot spilleren, flyr tilbake. |
+| Elite | Enemy_3 (hai) | Projectile_2, rød | 3 | 40 | Dykker ut av formasjonen mot spilleren, flyr tilbake. |
 | Boss | Boss.png (160×90, 6 frames) | ikke bestemt | 60 | 1000 | Tre faser, se under. |
 
 Spilleren skyter med Projectile_1 (gul/oransje bolt). Kuletypene er definert
 i `core/bullets.gd` (`KINDS`), og hvilken fiende som bruker hvilken står i
-`enemies/swarm.gd` (`ROW_BULLETS`).
+`enemies/enemy_types.gd` (`TYPES`).
 
-Skalering per bølge: `hp × (1 + 0,15 × (bølge − 1))` rundet opp, og
-skytefrekvens `× (1 + 0,1 × (bølge − 1))`. Tallene bor i `waves/waves.gd`,
-ikke spredt rundt i koden.
+Skalering per bølge: hver bølge har `hp_mult` (hp × dette, avrundet til
+nærmeste, minst 1), `fire_rate_mult`, `speed_mult` og `bullet_speed_mult`.
+Tallene bor i `waves/waves.gd`, ikke spredt rundt i koden.
 
-## Bølgetabell (v1)
+## Bølgetabell (v2, slik den ligger i `waves/waves.gd`)
 
-| Bølge | Fiender | Formasjon (pool) | Bevegelse (pool) | Nytt denne bølgen |
-|---|---|---|---|---|
-| 1 | 16 grunt | 2 rader | klassisk | Opplæring: som i dag, men færre. |
-| 2 | 24 grunt/soldat | 3 rader, V-form | klassisk | Soldater skyter mer. |
-| 3 | 24 + 8 skytter | 4 rader | klassisk, sinus | Siktede skudd. |
-| 4 | 32 blandet | grid, sjakkbrett | sinus | Første "store" bølge. |
-| 5 | 8 elite + 16 grunt | ring, V-form | klassisk + dykk | Dykkere. Elite-bølge, føles som miniboss. |
-| 6 | 32 blandet | grid, to grupper | sinus, dykk | To grupper med hver sin retning. |
-| 7 | 40 blandet | sjakkbrett, to grupper | alle | Maks antall. Ytelsestest på Pi. |
-| 8 | 24 skytter/elite | ring | dykk, sinus | Færre, men alle er farlige. |
-| 9 | 40 blandet | alle | alle | "Alt vi har". |
-| 10 | Boss (+ grunts i fase 2) | — | boss-mønster | Bossen. |
+Bossen finnes ikke ennå, så bølge 10 er en finale med vanlige fiender. Tabellen er laget av et designpanel (tempo, spektakkel,
+rettferdighet) og stilt inn mot bot-simulatoren i `tests/sim_waves.tscn`.
+
+| Bølge | Banner | Fiender | Formasjon | Innflyging (pool) | Bevegelse (pool) | Nytt denne bølgen |
+|---|---|---|---|---|---|---|
+| 1 | BØLGE 1 | 16 grunt | rader | ovenfra | klassisk | Opplæring: flytt, skyt, én kule om gangen. |
+| 2 | SOLDATER | 12 soldat + 15 grunt | V-form (tre hele vinkler) | fra sidene | sinus | Soldater skyter ofte, og formasjonen svaier i stedet for å marsjere. |
+| 3 | DE SIKTER! | 9 skytter + 15 grunt | diamant | løkke, spiral | puls | Første siktede skudd og første show-innflyging. |
+| 4 | PORTEN | 8 skytter + 8 soldat + 16 grunt | to grupper | kryss, fra sidene | splitt | Første store bølge: to dører som åpner og lukker seg. |
+| 5 | HAIENE | 16 grunt + 8 elite | pil mot spilleren | stup | vugge | Miniboss-følelse: haiene sitter i pilspissen og dykker. Rolige kuler, dykkene er hele historien. |
+| 6 | KULEREGN | 13 soldat + 19 grunt | sjakkbrett | regn | puls | Pustepause med vri: flest kuler i hele spillet, men ingenting sikter eller dykker. |
+| 7 | SLANGEN | 8 skytter + 16 soldat + 16 grunt | søyler | slange | åttetall | Maks antall (40, Pi-testen). Skyt skytterne bakerst gjennom banene mellom søylene. |
+| 8 | DØDSHJULET | 7 elite + 17 skytter | ring | spiral, løkke | bane (karusell) | Få, men alle farlige: alle sikter, ingen kanonføde, målene går i ring. |
+| 9 | ALT VI HAR | 4 elite + 4 skytter + 16 soldat + 16 grunt | X | kryss, stup | vugge, splitt | Alle fire typer samtidig, størst variasjon fra run til run. |
+| 10 | SISTE BØLGE | 8 elite + 4 skytter + 12 soldat + 16 grunt | rader | slange, regn | klassisk | Finalen: tilbake til start, men 5 × 8, raskest marsj, raskest kuler, og nå dykker skytterne også. |
+
+Hver formasjon (9), innflyging (8) og bevegelse (7) brukes minst én gang.
+
+### Vanskelighetskurve
+
+**Med oppgraderinger (oktober 2026):** bonuslivene er tatt ut, og `hp_mult`
+er 1,5 i bølge 4–5, 2,0 i 6–7, 2,5 i 8–9 og 3,0 i bølge 10 som motvekt til
+vifte, skade og hurtigskudd. Målt på hele spillet, 40 runs:
+
+| Bot | Oppgraderinger | Seier | Snitt-tid for seier |
+|---|---|---|---|
+| good | smart valg | 39/40 | 3,5 min |
+| average | smart valg | 23/40 | 3,9 min |
+| average | tilfeldige valg | 19/40 | 5,4 min |
+| good | ingen (før HP-skalering) | 13/40 | 6,5 min |
+
+Før HP-skaleringen vant "average" 36 av 40 run med tilfeldige valg på
+under 4 minutter, så oppgraderingene bærer spillet. Bevisst ikke
+finjustert videre: spillet skal først prøves av folk på Pi-en. Tallene
+under er fra før oppgraderingene og gjelder hver bølge for seg, uten dem.
+
+Målt med boten "good" (øvet arkadespiller), hver bølge for seg med tre liv,
+96 forsøk per bølge:
+
+| Bølge | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Tapte liv | 0,08 | 0,12 | 0,15 | 0,24 | 0,57 | 0,39 | 0,64 | 0,70 | 0,81 | 1,18 |
+| Sekunder | 17 | 29 | 20 | 35 | 25 | 48 | 60 | 30 | 41 | 73 |
+
+Jevnt stigende med en bevisst dupp i bølge 6. Summen er ca. 4,9 liv, mot 3 liv
++ 3 bonusliv. På hele spillet vinner den gode boten 38 % av forsøkene på
+6,5 minutter, og den uøvede ("average") når typisk bølge 6 og vinner nesten
+aldri. Formasjonen når aldri bunnen for noen av dem: `descent_time` er
+tidspress, ikke det som tar livet av deg.
+
+Ta tallene som en rettesnor, ikke en fasit. Boten jukser ett sted (den leser
+dykkets mål rett fra spillet, der et menneske må lese banen), så dykk er
+trolig litt farligere for folk enn tallene sier. Ekte spillere på Pi-en er
+den endelige testen.
+
+Det designpanelet lærte om knappene (verdt å huske når oppgraderingene kommer):
+
+- **`speed_mult` (tempo i mønsteret) er den sterkeste knappen for øvede
+  spillere.** Med én kule i lufta betyr et mål i sidebevegelse bom, og hver
+  bom koster ca. 0,8 s.
+- **`fire_rate_mult`, `bullet_speed_mult` og `max_bullets` betyr lite for
+  øvede, men mye for uøvede.** Derfor er de lave i bølge 1–3 og kan være
+  høye sent.
+- **Valg av mønster betyr like mye som tallene.** `pulse` er klart
+  vanskeligst sammen med siktede skudd, `classic` og `split` lettest, og
+  `orbit` på en ring er raskt fordi karusellen bringer fiendene ned til
+  kanonen. Poolene er derfor holdt homogene i vanskelighet.
+- **HP er dyrest** så lenge spilleren har én kule, og derfor er `hp_mult`
+  den riktige motvekten når oppgraderingene gir flere kuler og mer skade.
 
 ## Fiendeanimasjoner (inn og ut)
 
