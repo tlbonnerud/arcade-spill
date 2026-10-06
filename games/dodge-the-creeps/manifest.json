@@ -1,0 +1,6 @@
+{
+	"id": "dodge_the_creeps",
+	"name": "Dodge the Creeps",
+	"pck": "dodge-the-creeps.pck",
+	"main_scene": "res://games/dodge_the_creeps/Main.tscn"
+}

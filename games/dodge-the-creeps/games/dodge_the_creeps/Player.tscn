@@ -1,0 +1,63 @@
+[gd_scene load_steps=11 format=2]
+
+[ext_resource path="res://icon.png" type="Texture" id=1]
+[ext_resource path="res://games/dodge_the_creeps/dodge_the_creeps_2d_assets/art/playerGrey_up1.png" type="Texture" id=2]
+[ext_resource path="res://games/dodge_the_creeps/Player.gd" type="Script" id=3]
+[ext_resource path="res://games/dodge_the_creeps/dodge_the_creeps_2d_assets/art/Player_red.png" type="Texture" id=4]
+
+[sub_resource type="AtlasTexture" id=3]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 0, 0, 32, 32 )
+
+[sub_resource type="AtlasTexture" id=4]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 32, 0, 32, 32 )
+
+[sub_resource type="AtlasTexture" id=5]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 64, 0, 32, 32 )
+
+[sub_resource type="AtlasTexture" id=6]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 96, 0, 32, 32 )
+
+[sub_resource type="SpriteFrames" id=1]
+animations = [ {
+"frames": [ SubResource( 3 ), SubResource( 4 ), SubResource( 5 ), SubResource( 6 ) ],
+"loop": true,
+"name": "default",
+"speed": 5.0
+} ]
+
+[sub_resource type="CapsuleShape2D" id=2]
+radius = 23.5714
+height = 0.0
+
+[node name="Player" type="Area2D"]
+position = Vector2( 1.36422e-12, 1.36422e-12 )
+scale = Vector2( 0.7, 0.7 )
+script = ExtResource( 3 )
+
+[node name="AnimatedSprite" type="AnimatedSprite" parent="."]
+position = Vector2( 1.36422e-12, 1.36422e-12 )
+scale = Vector2( 2, 2 )
+frames = SubResource( 1 )
+
+[node name="PlayerGreyUp1" type="Sprite" parent="AnimatedSprite"]
+position = Vector2( -2051, -720 )
+texture = ExtResource( 2 )
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2( 1.36422e-12, 1.36422e-12 )
+scale = Vector2( 1.5, 1.5 )
+shape = SubResource( 2 )
+
+[node name="ExplosionSprite" type="Sprite" parent="."]
+visible = false
+texture = ExtResource( 1 )
+
+[connection signal="body_entered" from="." to="." method="_on_Player_body_entered"]

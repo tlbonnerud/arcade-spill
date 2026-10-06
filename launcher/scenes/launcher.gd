@@ -13,6 +13,7 @@ const SIZE := Vector2(640, 360)
 const BUTTON_TEXTURES := {
 	"ailien_invaders": "aliens-button.png",
 	"ball": "creep-button.png",
+	"dodge_the_creeps": "creep-button.png",
 }
 
 const SCALE_SELECTED := 3.6
